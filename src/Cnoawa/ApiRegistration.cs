@@ -70,6 +70,7 @@ public class ApiRegistration
 
     CancellationTokenSource? _heartbeatDelayCts;
     long _lastHeartbeatTime;
+    volatile bool _heartbeatPending;
 
     public async Task HeartbeatLoop(CancellationToken ct)
     {
@@ -77,15 +78,20 @@ public class ApiRegistration
         {
             while (!ct.IsCancellationRequested)
             {
-                _heartbeatDelayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                try
+                if (!_heartbeatPending)
                 {
-                    await Task.Delay(30_000, _heartbeatDelayCts.Token);
+                    _heartbeatDelayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    try
+                    {
+                        await Task.Delay(30_000, _heartbeatDelayCts.Token);
+                    }
+                    catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                    {
+                    }
+                    _heartbeatDelayCts = null;
                 }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                {
-                }
-                _heartbeatDelayCts = null;
+
+                _heartbeatPending = false;
 
                 if (ct.IsCancellationRequested) break;
 
@@ -103,6 +109,7 @@ public class ApiRegistration
 
     public void TriggerHeartbeat()
     {
+        _heartbeatPending = true;
         _heartbeatDelayCts?.Cancel();
     }
 
