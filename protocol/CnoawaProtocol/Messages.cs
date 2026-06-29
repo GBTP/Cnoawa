@@ -83,7 +83,7 @@ namespace CnoawaProtocol
         public byte RoomType { get; set; }
         public byte HostPlayerId { get; set; }
         public byte LocalPlayerId { get; set; }
-        public SnapshotPlayer[] Players { get; set; } = [];
+        public SnapshotPlayer[]? Players { get; set; }
         public int? SelectedLevelId { get; set; }
         public string? SelectedLevelName { get; set; }
     }

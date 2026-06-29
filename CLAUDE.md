@@ -91,6 +91,13 @@ Lobby → ChartSelect → Downloading → Playing → Results → Lobby（循环
 
 修改 `protocol/CnoawaProtocol/` 后必须同步复制到 Unity 项目的 `Assets/Plugins/CnoawaProtocol/`。
 
+**语法限制**：共享协议代码必须兼容 C# 9（Unity 使用的版本）。禁止使用：
+- 集合表达式 `= []`（C# 12）
+- `required` 修饰符（C# 11）
+- 文件作用域命名空间（C# 10）
+
+数组属性用 nullable `T[]?` 声明即可，不需要初始化器。
+
 ## 通用规范
 
 - Commit 信息使用中文
