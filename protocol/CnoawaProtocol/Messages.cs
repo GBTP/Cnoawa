@@ -1,6 +1,6 @@
 using MemoryPack;
 
-namespace AnoawaProtocol
+namespace CnoawaProtocol
 {
     // === 认证 ===
 
@@ -15,8 +15,7 @@ namespace AnoawaProtocol
     {
         public bool Success { get; set; }
         public int UserId { get; set; }
-        public string Nickname { get; set; } = "";
-        public string AvatarUrl { get; set; } = "";
+        public byte PlayerId { get; set; }
         public string Reason { get; set; } = "";
     }
 
@@ -60,8 +59,7 @@ namespace AnoawaProtocol
     public partial class PlayerJoinedMessage
     {
         public byte PlayerId { get; set; }
-        public string Nickname { get; set; } = "";
-        public string AvatarUrl { get; set; } = "";
+        public int UserId { get; set; }
     }
 
     [MemoryPackable]
@@ -102,7 +100,7 @@ namespace AnoawaProtocol
     public partial class PlayerReadyInfo
     {
         public byte PlayerId { get; set; }
-        public string Nickname { get; set; } = "";
+        public int UserId { get; set; }
         public bool IsReady { get; set; }
     }
 
@@ -131,7 +129,6 @@ namespace AnoawaProtocol
     public partial class VoteEntry
     {
         public byte PlayerId { get; set; }
-        public string Nickname { get; set; } = "";
         public int LevelId { get; set; }
         public string LevelName { get; set; } = "";
     }
@@ -141,6 +138,7 @@ namespace AnoawaProtocol
     {
         public int LevelId { get; set; }
         public string LevelName { get; set; } = "";
+        public string[]? Candidates { get; set; }
     }
 
     [MemoryPackable]
@@ -227,7 +225,7 @@ namespace AnoawaProtocol
     public partial class PlayerResult
     {
         public byte PlayerId { get; set; }
-        public string Nickname { get; set; } = "";
+        public int UserId { get; set; }
         public int Score { get; set; }
         public int MaxPure { get; set; }
         public int Pure { get; set; }
@@ -243,8 +241,7 @@ namespace AnoawaProtocol
     public partial class PlayerInfo
     {
         public byte PlayerId { get; set; }
-        public string Nickname { get; set; } = "";
-        public string AvatarUrl { get; set; } = "";
+        public int UserId { get; set; }
     }
 
     [MemoryPackable]

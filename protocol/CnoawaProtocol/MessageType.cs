@@ -1,4 +1,4 @@
-namespace AnoawaProtocol
+namespace CnoawaProtocol
 {
     public enum MessageType : byte
     {

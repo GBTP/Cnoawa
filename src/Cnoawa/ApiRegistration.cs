@@ -1,5 +1,4 @@
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Cnoawa;
@@ -11,19 +10,21 @@ public class ApiRegistration
     readonly ushort _port;
     readonly string _name;
     readonly string _message;
+    readonly string _registrationKey;
     readonly GameNode _node;
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
 
     int _nodeId;
     string _token = "";
 
-    public ApiRegistration(string apiUrl, string publicAddress, ushort port, string name, string message, GameNode node)
+    public ApiRegistration(string apiUrl, string publicAddress, ushort port, string name, string message, string registrationKey, GameNode node)
     {
         _apiUrl = apiUrl.TrimEnd('/');
         _publicAddress = publicAddress;
         _port = port;
         _name = name;
         _message = message;
+        _registrationKey = registrationKey;
         _node = node;
     }
 
@@ -37,7 +38,8 @@ public class ApiRegistration
                 port = _port,
                 name = _name,
                 message = _message,
-                maxRooms = 50
+                maxRooms = 50,
+                registrationKey = _registrationKey
             };
 
             var response = await _http.PostAsJsonAsync($"{_apiUrl}/api/nodes/register", request);
@@ -53,6 +55,8 @@ public class ApiRegistration
 
             _nodeId = result.Id;
             _token = result.Token;
+
+            _node.ConfigureJwt(result.JwtPublicKey, result.JwtIssuer, result.JwtAudience);
 
             Console.WriteLine($"[注册] 成功! 节点 ID: {_nodeId}");
             return true;
@@ -85,8 +89,19 @@ public class ApiRegistration
                 msg.Headers.Add("X-Node-Token", _token);
 
                 var response = await _http.SendAsync(msg, ct);
-                if (!response.IsSuccessStatusCode)
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine("[心跳] 收到 404，尝试重新注册...");
+                    var reRegistered = await RegisterAsync();
+                    if (reRegistered)
+                        Console.WriteLine("[心跳] 重新注册成功");
+                    else
+                        Console.WriteLine("[心跳] 重新注册失败");
+                }
+                else if (!response.IsSuccessStatusCode)
+                {
                     Console.WriteLine($"[心跳] 失败: {response.StatusCode}");
+                }
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
@@ -112,5 +127,8 @@ public class ApiRegistration
     {
         [JsonPropertyName("id")] public int Id { get; set; }
         [JsonPropertyName("token")] public string Token { get; set; } = "";
+        [JsonPropertyName("jwtPublicKey")] public string JwtPublicKey { get; set; } = "";
+        [JsonPropertyName("jwtIssuer")] public string JwtIssuer { get; set; } = "";
+        [JsonPropertyName("jwtAudience")] public string JwtAudience { get; set; } = "";
     }
 }

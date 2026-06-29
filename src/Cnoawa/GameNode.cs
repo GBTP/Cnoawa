@@ -1,7 +1,10 @@
 using System.Collections.Concurrent;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Sockets;
-using AnoawaProtocol;
+using System.Security.Cryptography;
+using CnoawaProtocol;
+using Microsoft.IdentityModel.Tokens;
 
 namespace Cnoawa;
 
@@ -14,17 +17,27 @@ public class GameNode
     CancellationTokenSource _cts = new();
     int _nextConnId;
 
-    public string Name { get; set; } = "";
-    public string Message { get; set; } = "";
+    RsaSecurityKey? _jwtPublicKey;
+    string _jwtIssuer = "";
+    string _jwtAudience = "";
+
     public string ApiUrl { get; set; } = "";
     public int ActiveRoomCount => _rooms.Count;
     public int ActiveConnectionCount => _connections.Count;
 
-    readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(5) };
-
     public GameNode(ushort port)
     {
         _port = port;
+    }
+
+    public void ConfigureJwt(string publicKeyPem, string issuer, string audience)
+    {
+        var rsa = RSA.Create();
+        rsa.ImportFromPem(publicKeyPem);
+        _jwtPublicKey = new RsaSecurityKey(rsa);
+        _jwtIssuer = issuer;
+        _jwtAudience = audience;
+        Console.WriteLine("[Cnoawa] JWT 公钥已配置，本地验签就绪");
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -67,7 +80,6 @@ public class GameNode
     {
         if (_connections.TryRemove(connId, out var conn))
         {
-            // 从房间中移除
             if (conn.CurrentRoom != null)
                 conn.CurrentRoom.RemovePlayer(conn);
             Console.WriteLine($"[Cnoawa] 连接断开: #{connId}");
@@ -82,9 +94,9 @@ public class GameNode
 
     public NodeRoom CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator)
     {
-        var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator);
+        var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl);
         _rooms[roomId] = room;
-        Console.WriteLine($"[Cnoawa] 房间创建: #{roomId} \"{roomName}\" (创建者: {creator.Nickname})");
+        Console.WriteLine($"[Cnoawa] 房间创建: #{roomId} \"{roomName}\" (创建者: userId={creator.UserId})");
         return room;
     }
 
@@ -102,12 +114,6 @@ public class GameNode
         return _rooms.Values.Select(r => r.GetInfo()).ToList();
     }
 
-    public bool HandleProbe(TcpClient tcp)
-    {
-        // 探测在 NodeConnection 的读循环中处理
-        return false;
-    }
-
     async Task CleanupLoop(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -121,26 +127,32 @@ public class GameNode
         }
     }
 
-    public async Task<UserValidation?> ValidateTokenAsync(string token)
+    public int? ValidateToken(string token)
     {
-        if (string.IsNullOrEmpty(ApiUrl)) return null;
+        if (_jwtPublicKey == null) return null;
+
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, $"{ApiUrl}/api/auth/profile");
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-            var response = await _httpClient.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return null;
-
-            var json = await response.Content.ReadAsStringAsync();
-            var doc = System.Text.Json.JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            return new UserValidation
+            var handler = new JwtSecurityTokenHandler();
+            var parameters = new TokenValidationParameters
             {
-                UserId = root.GetProperty("id").GetInt32(),
-                Nickname = root.GetProperty("nickname").GetString() ?? "",
-                AvatarUrl = root.TryGetProperty("avatarUrl", out var av) ? av.GetString() ?? "" : ""
+                ValidateIssuer = true,
+                ValidIssuer = _jwtIssuer,
+                ValidateAudience = true,
+                ValidAudience = _jwtAudience,
+                ValidateLifetime = true,
+                IssuerSigningKey = _jwtPublicKey,
+                ValidateIssuerSigningKey = true
             };
+
+            var principal = handler.ValidateToken(token, parameters, out _);
+            var userIdClaim = principal.FindFirst("userId")?.Value
+                ?? principal.FindFirst("sub")?.Value;
+
+            if (userIdClaim != null && int.TryParse(userIdClaim, out var userId))
+                return userId;
+
+            return null;
         }
         catch
         {
@@ -153,17 +165,10 @@ public class RoomInfo
 {
     public int RoomId { get; set; }
     public string RoomName { get; set; } = "";
-    public string HostNickname { get; set; } = "";
+    public int HostUserId { get; set; }
     public int CurrentPlayers { get; set; }
     public int MaxPlayers { get; set; }
     public string Status { get; set; } = "Lobby";
     public int? SelectedLevelId { get; set; }
     public string? SelectedLevelName { get; set; }
-}
-
-public class UserValidation
-{
-    public int UserId { get; set; }
-    public string Nickname { get; set; } = "";
-    public string AvatarUrl { get; set; } = "";
 }

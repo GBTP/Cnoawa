@@ -1,7 +1,6 @@
-using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Threading.Channels;
-using AnoawaProtocol;
+using CnoawaProtocol;
 using MemoryPack;
 
 namespace Cnoawa;
@@ -22,8 +21,6 @@ public class NodeConnection
     public int ConnId => _connId;
     public bool IsAuthenticated { get; private set; }
     public int UserId { get; private set; }
-    public string Nickname { get; private set; } = "";
-    public string AvatarUrl { get; private set; } = "";
     public byte PlayerId { get; set; }
     public NodeRoom? CurrentRoom { get; set; }
 
@@ -56,14 +53,13 @@ public class NodeConnection
                 _lastRecv = DateTime.UtcNow;
                 var (type, payload) = frame.Value;
 
-                // TCP 探测
                 if (type == (MessageType)0xAA && payload.Length >= 2 && payload[0] == 0x55 && payload[1] == 0x01)
                 {
                     Send(FrameCodec.Encode((MessageType)0xAA, new byte[] { 0x55, 0x02 }));
-                    break; // 探测连接用完即关
+                    break;
                 }
 
-                await HandleMessage(type, payload);
+                HandleMessage(type, payload);
             }
         }
         catch (OperationCanceledException) { }
@@ -81,12 +77,12 @@ public class NodeConnection
         }
     }
 
-    async Task HandleMessage(MessageType type, byte[] payload)
+    void HandleMessage(MessageType type, byte[] payload)
     {
         switch (type)
         {
             case MessageType.Auth:
-                await HandleAuth(payload);
+                HandleAuth(payload);
                 break;
             case MessageType.Ping:
                 Send(FrameCodec.EncodeEmpty(MessageType.Pong));
@@ -100,14 +96,14 @@ public class NodeConnection
                     return;
                 }
                 if (CurrentRoom != null)
-                    await CurrentRoom.HandleMessage(this, type, payload);
+                    CurrentRoom.HandleMessage(this, type, payload);
                 else
                     HandleLobbyMessage(type, payload);
                 break;
         }
     }
 
-    async Task HandleAuth(byte[] payload)
+    void HandleAuth(byte[] payload)
     {
         var msg = MemoryPackSerializer.Deserialize<AuthMessage>(payload);
         if (msg == null || string.IsNullOrEmpty(msg.Token))
@@ -116,27 +112,24 @@ public class NodeConnection
             return;
         }
 
-        var userInfo = await _node.ValidateTokenAsync(msg.Token);
-        if (userInfo == null)
+        var userId = _node.ValidateToken(msg.Token);
+        if (userId == null)
         {
             SendMessage(MessageType.AuthResult, new AuthResultMessage { Success = false, Reason = "Token 无效或已过期" });
             return;
         }
 
         IsAuthenticated = true;
-        UserId = userInfo.UserId;
-        Nickname = userInfo.Nickname;
-        AvatarUrl = userInfo.AvatarUrl;
+        UserId = userId.Value;
 
         SendMessage(MessageType.AuthResult, new AuthResultMessage
         {
             Success = true,
             UserId = UserId,
-            Nickname = Nickname,
-            AvatarUrl = AvatarUrl
+            PlayerId = PlayerId
         });
 
-        Console.WriteLine($"[Cnoawa] #{_connId} 认证成功: {Nickname} (userId={UserId})");
+        Console.WriteLine($"[Cnoawa] #{_connId} 认证成功: userId={UserId}");
     }
 
     void HandleLobbyMessage(MessageType type, byte[] payload)
