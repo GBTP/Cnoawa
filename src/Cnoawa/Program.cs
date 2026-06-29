@@ -38,7 +38,9 @@ class Program
         var node = new GameNode(port);
         node.ApiUrl = apiUrl.TrimEnd('/');
 
-        // 先启动 TCP 监听，确保注册时端口已就绪
+        var registration = new ApiRegistration(apiUrl, publicAddress, port, name, message, registrationKey, node);
+        node.OnRoomStateChanged = () => { registration.TriggerHeartbeat(); return Task.CompletedTask; };
+
         var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {
@@ -50,8 +52,6 @@ class Program
         var nodeTask = node.RunAsync(cts.Token);
         await Task.Delay(200);
 
-        var registration = new ApiRegistration(apiUrl, publicAddress, port, name, message, registrationKey, node);
-
         Console.WriteLine($"[Cnoawa] 正在向 {apiUrl} 注册...");
         var registered = await registration.RegisterAsync();
         if (!registered)
@@ -59,9 +59,7 @@ class Program
             Console.WriteLine("[Cnoawa] 注册失败，将以离线模式运行（不在主 API 列表中显示）");
         }
 
-        Task? heartbeatTask = null;
-        if (registered)
-            heartbeatTask = Task.Run(() => registration.HeartbeatLoop(cts.Token));
+        Task? heartbeatTask = registered ? Task.Run(() => registration.HeartbeatLoop(cts.Token)) : null;
 
         try
         {
