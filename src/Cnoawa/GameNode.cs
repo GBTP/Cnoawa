@@ -46,6 +46,7 @@ public class GameNode
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         _listener = new TcpListener(IPAddress.Any, _port);
+        _listener.Server.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, System.Net.Sockets.SocketOptionName.ReuseAddress, true);
         _listener.Start();
         Console.WriteLine($"[Cnoawa] 游戏节点启动，端口: {_port}");
 
@@ -83,6 +84,7 @@ public class GameNode
         finally
         {
             _listener.Stop();
+            _listener.Server.Close();
             foreach (var conn in _connections.Values)
                 conn.Close();
             Console.WriteLine("[Cnoawa] 节点已停止");
