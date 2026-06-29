@@ -68,51 +68,74 @@ public class ApiRegistration
         }
     }
 
+    CancellationTokenSource? _heartbeatDelayCts;
+
     public async Task HeartbeatLoop(CancellationToken ct)
     {
         try
         {
-        while (!ct.IsCancellationRequested)
-        {
-            await Task.Delay(30_000, ct);
-            try
+            while (!ct.IsCancellationRequested)
             {
-                var request = new
+                _heartbeatDelayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                try
                 {
-                    activeRooms = _node.ActiveRoomCount,
-                    activeConnections = _node.ActiveConnectionCount,
-                    rooms = _node.GetRoomInfos()
-                };
-
-                var msg = new HttpRequestMessage(HttpMethod.Post, $"{_apiUrl}/api/nodes/{_nodeId}/heartbeat")
-                {
-                    Content = JsonContent.Create(request)
-                };
-                msg.Headers.Add("X-Node-Token", _token);
-
-                var response = await _http.SendAsync(msg, ct);
-                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
-                {
-                    Console.WriteLine("[心跳] 收到 404，尝试重新注册...");
-                    var reRegistered = await RegisterAsync();
-                    if (reRegistered)
-                        Console.WriteLine("[心跳] 重新注册成功");
-                    else
-                        Console.WriteLine("[心跳] 重新注册失败");
+                    await Task.Delay(30_000, _heartbeatDelayCts.Token);
                 }
-                else if (!response.IsSuccessStatusCode)
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
-                    Console.WriteLine($"[心跳] 失败: {response.StatusCode}");
+                    // delay 被 TriggerHeartbeat 取消，立即发送
                 }
+                _heartbeatDelayCts = null;
+
+                if (ct.IsCancellationRequested) break;
+                await SendHeartbeatAsync();
             }
-            catch (OperationCanceledException) { break; }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[心跳] 异常: {ex.Message}");
-            }
-        }
         }
         catch (OperationCanceledException) { }
+    }
+
+    public void TriggerHeartbeat()
+    {
+        _heartbeatDelayCts?.Cancel();
+    }
+
+    public async Task SendHeartbeatAsync()
+    {
+        try
+        {
+            var request = new
+            {
+                activeRooms = _node.ActiveRoomCount,
+                activeConnections = _node.ActiveConnectionCount,
+                rooms = _node.GetRoomInfos()
+            };
+
+            var msg = new HttpRequestMessage(HttpMethod.Post, $"{_apiUrl}/api/nodes/{_nodeId}/heartbeat")
+            {
+                Content = JsonContent.Create(request)
+            };
+            msg.Headers.Add("X-Node-Token", _token);
+
+            var response = await _http.SendAsync(msg);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                Console.WriteLine("[心跳] 收到 404，尝试重新注册...");
+                var reRegistered = await RegisterAsync();
+                if (reRegistered)
+                    Console.WriteLine("[心跳] 重新注册成功");
+                else
+                    Console.WriteLine("[心跳] 重新注册失败");
+            }
+            else if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"[心跳] 失败: {response.StatusCode}");
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[心跳] 异常: {ex.Message}");
+        }
     }
 
     public async Task UnregisterAsync()

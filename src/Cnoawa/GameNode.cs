@@ -24,6 +24,7 @@ public class GameNode
     public string ApiUrl { get; set; } = "";
     public int ActiveRoomCount => _rooms.Count;
     public int ActiveConnectionCount => _connections.Count;
+    public Func<Task>? OnRoomStateChanged { get; set; }
 
     public GameNode(ushort port)
     {
@@ -106,8 +107,10 @@ public class GameNode
     public NodeRoom CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator)
     {
         var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl);
+        room.OnStateChanged = NotifyRoomStateChanged;
         _rooms[roomId] = room;
         Console.WriteLine($"[Cnoawa] 房间创建: #{roomId} \"{roomName}\" (创建者: userId={creator.UserId})");
+        NotifyRoomStateChanged();
         return room;
     }
 
@@ -117,12 +120,18 @@ public class GameNode
         {
             room.Dispose();
             Console.WriteLine($"[Cnoawa] 房间移除: #{roomId}");
+            NotifyRoomStateChanged();
         }
     }
 
     public List<RoomInfo> GetRoomInfos()
     {
         return _rooms.Values.Select(r => r.GetInfo()).ToList();
+    }
+
+    void NotifyRoomStateChanged()
+    {
+        _ = OnRoomStateChanged?.Invoke();
     }
 
     async Task CleanupLoop(CancellationToken ct)

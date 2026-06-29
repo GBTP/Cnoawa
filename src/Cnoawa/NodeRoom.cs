@@ -34,6 +34,7 @@ public class NodeRoom : IDisposable
     public string? SelectedLevelName { get; private set; }
     public bool IsEmpty => _players.IsEmpty;
     public int PlayerCount => _players.Count;
+    public Action? OnStateChanged { get; set; }
 
     public NodeRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator, string apiUrl)
     {
@@ -583,6 +584,7 @@ public class NodeRoom : IDisposable
         }
 
         BroadcastSnapshot();
+        OnStateChanged?.Invoke();
     }
 
     void BroadcastSnapshot()
