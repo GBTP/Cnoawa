@@ -54,6 +54,7 @@ public class NodeRoom : IDisposable
         {
             AddPlayerInternal(conn);
             BroadcastSnapshot();
+            OnStateChanged?.Invoke();
         }
     }
 
@@ -102,6 +103,7 @@ public class NodeRoom : IDisposable
             }
 
             BroadcastSnapshot();
+            OnStateChanged?.Invoke();
         }
     }
 
@@ -138,6 +140,7 @@ public class NodeRoom : IDisposable
             });
 
             BroadcastSnapshot();
+            OnStateChanged?.Invoke();
 
             Console.WriteLine($"[房间#{RoomId}] userId={conn.UserId} 加入 (playerId={conn.PlayerId}, 当前{_players.Count}人)");
         }
@@ -562,12 +565,18 @@ public class NodeRoom : IDisposable
         target.Close();
 
         BroadcastSnapshot();
+        OnStateChanged?.Invoke();
     }
+
+    CancellationTokenSource? _voteTimeoutCts;
 
     void SetState(RoomState state)
     {
         State = state;
         Broadcast(MessageType.StateChange, new StateChangeMessage { State = (byte)state });
+
+        _voteTimeoutCts?.Cancel();
+        _voteTimeoutCts = null;
 
         if (state == RoomState.Lobby)
         {
@@ -586,10 +595,46 @@ public class NodeRoom : IDisposable
             _votes.Clear();
             _downloadProgress.Clear();
             _readyState.Clear();
+            _voteTimeoutCts = new CancellationTokenSource();
+            _ = VoteCountdown(_voteTimeoutCts.Token);
         }
 
         BroadcastSnapshot();
         OnStateChanged?.Invoke();
+    }
+
+    async Task VoteCountdown(CancellationToken ct)
+    {
+        try
+        {
+            for (int i = 30; i >= 1; i--)
+            {
+                Broadcast(MessageType.Countdown, new CountdownMessage { Seconds = i });
+                await Task.Delay(1000, ct);
+            }
+        }
+        catch (TaskCanceledException) { return; }
+
+        lock (_stateLock)
+        {
+            if (State != RoomState.ChartSelect) return;
+
+            foreach (var conn in _players.Values)
+            {
+                if (!_votes.ContainsKey(conn.PlayerId))
+                {
+                    _votes[conn.PlayerId] = new VoteEntry
+                    {
+                        PlayerId = conn.PlayerId,
+                        LevelId = -1,
+                        LevelName = "任意"
+                    };
+                }
+            }
+
+            BroadcastVoteStatus();
+            FinalizeVote();
+        }
     }
 
     void BroadcastSnapshot()
@@ -674,6 +719,7 @@ public class NodeRoom : IDisposable
         _disposed = true;
         _readyPhaseCts?.Cancel();
         _playingTimeoutCts?.Cancel();
+        _voteTimeoutCts?.Cancel();
         foreach (var conn in _players.Values)
         {
             conn.CurrentRoom = null;
