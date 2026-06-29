@@ -50,10 +50,21 @@ class Program
         };
 
         var nodeTask = node.RunAsync(cts.Token);
-        await Task.Delay(200);
+        await Task.Delay(500);
 
         Console.WriteLine($"[Cnoawa] 正在向 {apiUrl} 注册...");
-        var registered = await registration.RegisterAsync();
+        var registered = false;
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            registered = await registration.RegisterAsync();
+            if (registered) break;
+            if (attempt < 3)
+            {
+                Console.WriteLine($"[Cnoawa] 注册失败，{11}秒后重试 ({attempt}/3)...");
+                await Task.Delay(11000);
+            }
+        }
+
         if (!registered)
         {
             Console.WriteLine("[Cnoawa] 注册失败。没有 JWT 公钥无法验证玩家身份，节点无法运行。");
