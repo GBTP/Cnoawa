@@ -11,7 +11,8 @@ public class NodeConnection
     readonly TcpClient _tcp;
     readonly NetworkStream _stream;
     readonly GameNode _node;
-    readonly Channel<byte[]> _sendQueue = Channel.CreateBounded<byte[]>(256);
+    readonly Channel<byte[]> _sendQueue = Channel.CreateBounded<byte[]>(512);
+    volatile bool _sendQueueFull;
     readonly CancellationTokenSource _cts = new();
 
     DateTime _lastRecv = DateTime.UtcNow;
@@ -95,6 +96,11 @@ public class NodeConnection
                     SendError(401, "未认证");
                     return;
                 }
+                if (type == MessageType.LeaveRoom && CurrentRoom != null)
+                {
+                    CurrentRoom.HandleLeaveRoom(this);
+                    return;
+                }
                 if (CurrentRoom != null)
                     CurrentRoom.HandleMessage(this, type, payload);
                 else
@@ -109,6 +115,17 @@ public class NodeConnection
         if (msg == null || string.IsNullOrEmpty(msg.Token))
         {
             SendMessage(MessageType.AuthResult, new AuthResultMessage { Success = false, Reason = "无效的认证消息" });
+            return;
+        }
+
+        const byte CurrentProtocolVersion = 1;
+        if (msg.ProtocolVersion != CurrentProtocolVersion)
+        {
+            SendMessage(MessageType.AuthResult, new AuthResultMessage
+            {
+                Success = false,
+                Reason = $"协议版本不匹配，需要 v{CurrentProtocolVersion}，收到 v{msg.ProtocolVersion}。请更新客户端。"
+            });
             return;
         }
 
@@ -186,7 +203,18 @@ public class NodeConnection
 
     void Send(byte[] frame)
     {
-        _sendQueue.Writer.TryWrite(frame);
+        if (!_sendQueue.Writer.TryWrite(frame))
+        {
+            if (!_sendQueueFull)
+            {
+                _sendQueueFull = true;
+                Console.WriteLine($"[Cnoawa] #{_connId} 发送队列满，开始丢包");
+            }
+        }
+        else
+        {
+            _sendQueueFull = false;
+        }
     }
 
     async Task WriteLoop(CancellationToken ct)

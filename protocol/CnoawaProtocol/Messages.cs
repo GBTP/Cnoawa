@@ -8,6 +8,7 @@ namespace CnoawaProtocol
     public partial class AuthMessage
     {
         public string Token { get; set; } = "";
+        public byte ProtocolVersion { get; set; } = 1;
     }
 
     [MemoryPackable]
