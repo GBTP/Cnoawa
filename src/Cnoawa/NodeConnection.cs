@@ -227,6 +227,12 @@ public class NodeConnection
             }
         }
         catch { }
+
+        if (_gracefulClose)
+        {
+            await Task.Delay(50);
+            Close();
+        }
     }
 
     async Task PingLoop(CancellationToken ct)
@@ -248,6 +254,14 @@ public class NodeConnection
             }
         }
         catch { }
+    }
+
+    volatile bool _gracefulClose;
+
+    public void CloseAfterSend()
+    {
+        _gracefulClose = true;
+        _sendQueue.Writer.TryComplete();
     }
 
     public void Close()

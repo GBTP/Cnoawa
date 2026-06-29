@@ -579,7 +579,7 @@ public class NodeRoom : IDisposable
         _readyState.Remove(target.PlayerId);
 
         target.SendMessage(MessageType.Kick, msg);
-        target.Close();
+        target.CloseAfterSend();
 
         BroadcastSnapshot();
         OnStateChanged?.Invoke();
