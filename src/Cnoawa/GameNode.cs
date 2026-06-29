@@ -22,6 +22,7 @@ public class GameNode
     string _jwtAudience = "";
 
     public string ApiUrl { get; set; } = "";
+    public string NodeToken { get; set; } = "";
     public int ActiveRoomCount => _rooms.Count;
     public int ActiveConnectionCount => _connections.Count;
     public Func<Task>? OnRoomStateChanged { get; set; }
@@ -106,7 +107,7 @@ public class GameNode
 
     public NodeRoom CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator)
     {
-        var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl);
+        var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl, NodeToken);
         room.OnStateChanged = NotifyRoomStateChanged;
         room.OnRoomEmpty = RemoveRoom;
         _rooms[roomId] = room;

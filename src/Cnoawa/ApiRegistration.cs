@@ -56,6 +56,7 @@ public class ApiRegistration
             _nodeId = result.Id;
             _token = result.Token;
 
+            _node.NodeToken = result.Token;
             _node.ConfigureJwt(result.JwtPublicKey, result.JwtIssuer, result.JwtAudience);
 
             Console.WriteLine($"[注册] 成功! 节点 ID: {_nodeId}");

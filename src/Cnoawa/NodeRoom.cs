@@ -16,6 +16,7 @@ public class NodeRoom : IDisposable
     readonly Dictionary<byte, int> _lastReportedScore = new();
     readonly Dictionary<byte, int> _skillCooldown = new();
     readonly string _apiUrl;
+    readonly string _nodeToken;
     static readonly HttpClient s_http = new() { Timeout = TimeSpan.FromSeconds(10) };
     bool _disposed;
 
@@ -36,7 +37,7 @@ public class NodeRoom : IDisposable
     public Action? OnStateChanged { get; set; }
     public Action<int>? OnRoomEmpty { get; set; }
 
-    public NodeRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator, string apiUrl)
+    public NodeRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator, string apiUrl, string nodeToken)
     {
         RoomId = roomId;
         RoomName = roomName;
@@ -45,6 +46,7 @@ public class NodeRoom : IDisposable
         Password = password;
         Creator = creator;
         _apiUrl = apiUrl;
+        _nodeToken = nodeToken;
     }
 
     public void AddPlayer(NodeConnection conn)
@@ -304,7 +306,16 @@ public class NodeRoom : IDisposable
     {
         try
         {
-            var response = await s_http.GetFromJsonAsync<RandomLevelResponse>($"{_apiUrl}/api/levels/random?count=5");
+            var request = new HttpRequestMessage(HttpMethod.Get, $"{_apiUrl}/api/nodes/random-levels?count=5");
+            request.Headers.Add("X-Node-Token", _nodeToken);
+            var httpResponse = await s_http.SendAsync(request);
+            if (!httpResponse.IsSuccessStatusCode)
+            {
+                lock (_stateLock)
+                    BroadcastError("随机选曲失败：服务器返回错误");
+                return;
+            }
+            var response = await httpResponse.Content.ReadFromJsonAsync<RandomLevelResponse>();
             if (response?.Items == null || response.Items.Length == 0)
             {
                 lock (_stateLock)
