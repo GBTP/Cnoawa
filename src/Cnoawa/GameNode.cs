@@ -63,9 +63,11 @@ public class GameNode
                     var connId = Interlocked.Increment(ref _nextConnId);
                     var conn = new NodeConnection(connId, tcp, this);
                     _connections[connId] = conn;
-                    _ = conn.RunAsync(_cts.Token);
 
-                    Console.WriteLine($"[Cnoawa] 新连接: #{connId} ({tcp.Client.RemoteEndPoint})");
+                    var endpoint = tcp.Client.RemoteEndPoint?.ToString() ?? "unknown";
+                    Console.WriteLine($"[Cnoawa] 新连接: #{connId} ({endpoint})");
+
+                    _ = conn.RunAsync(_cts.Token);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
