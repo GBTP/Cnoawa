@@ -157,8 +157,9 @@ public class GameNode
             };
 
             var principal = handler.ValidateToken(token, parameters, out _);
-            var userIdClaim = principal.FindFirst("userId")?.Value
-                ?? principal.FindFirst("sub")?.Value;
+            var userIdClaim = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? principal.FindFirst("sub")?.Value
+                ?? principal.FindFirst("userId")?.Value;
 
             if (userIdClaim != null && int.TryParse(userIdClaim, out var userId))
                 return userId;
