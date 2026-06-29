@@ -385,9 +385,26 @@ public class NodeRoom : IDisposable
     {
         lock (_stateLock)
         {
-            _readyForPlay.Clear();
             _readyPhaseCts = new CancellationTokenSource();
             BroadcastSnapshot();
+
+            if (_players.Values.All(p => _readyForPlay.Contains(p.PlayerId)))
+            {
+                _readyPhaseCts.Cancel();
+                _readyPhaseCts = null;
+            }
+        }
+
+        if (_readyPhaseCts == null || _readyPhaseCts.IsCancellationRequested)
+        {
+            lock (_stateLock)
+            {
+                if (_disposed || _players.IsEmpty) return;
+                StartGame();
+            }
+            _playingTimeoutCts = new CancellationTokenSource();
+            _ = ComboHeartbeatCheck(_playingTimeoutCts.Token);
+            return;
         }
 
         try
@@ -408,21 +425,26 @@ public class NodeRoom : IDisposable
 
             if (_disposed || _players.IsEmpty) return;
 
-            SetState(RoomState.Playing);
-            _finishedPlayers.Clear();
-            _lastComboTime.Clear();
-            _lastReportedScore.Clear();
-            _skillCooldown.Clear();
-            var now = Environment.TickCount64;
-            foreach (var conn in _players.Values)
-                _lastComboTime[conn.PlayerId] = now;
-            Broadcast(MessageType.GameStart, new StateChangeMessage { State = (byte)RoomState.Playing });
+            StartGame();
         }
 
         if (_disposed || _players.IsEmpty) return;
 
         _playingTimeoutCts = new CancellationTokenSource();
         _ = ComboHeartbeatCheck(_playingTimeoutCts.Token);
+    }
+
+    void StartGame()
+    {
+        SetState(RoomState.Playing);
+        _finishedPlayers.Clear();
+        _lastComboTime.Clear();
+        _lastReportedScore.Clear();
+        _skillCooldown.Clear();
+        var now = Environment.TickCount64;
+        foreach (var conn in _players.Values)
+            _lastComboTime[conn.PlayerId] = now;
+        Broadcast(MessageType.GameStart, new StateChangeMessage { State = (byte)RoomState.Playing });
     }
 
     async Task ComboHeartbeatCheck(CancellationToken ct)
