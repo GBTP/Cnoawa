@@ -34,10 +34,10 @@ Cnoawa/
 
 ```bash
 dotnet build src/Cnoawa/Cnoawa.csproj
-dotnet run --project src/Cnoawa/Cnoawa.csproj -- <port> <apiUrl> <publicAddress> [name] [message]
+dotnet run --project src/Cnoawa/Cnoawa.csproj -- <port> <apiUrl> <publicAddress> [name] [message] [registrationKey]
 
 # 示例
-dotnet run --project src/Cnoawa/Cnoawa.csproj -- 7776 https://api.anoawa.com mynode.ddns.net "社区节点" "欢迎来玩"
+dotnet run --project src/Cnoawa/Cnoawa.csproj -- 7776 https://api.anoawa.com mynode.ddns.net "社区节点" "欢迎来玩" "abc123base64key=="
 ```
 
 参数：
@@ -46,6 +46,7 @@ dotnet run --project src/Cnoawa/Cnoawa.csproj -- 7776 https://api.anoawa.com myn
 - `publicAddress` — 本节点公网地址（IP 或域名，用于客户端连接）
 - `name` — 节点名称（显示给玩家）
 - `message` — 节点寄语
+- `registrationKey` — 节点注册密钥（也可通过环境变量 `NODE_REGISTRATION_KEY` 传入）
 
 ## TCP 帧协议
 
@@ -59,16 +60,20 @@ dotnet run --project src/Cnoawa/Cnoawa.csproj -- 7776 https://api.anoawa.com myn
 
 ## 节点注册流程
 
-1. 启动时向主 API `POST /api/nodes/register` 注册
-2. 主 API 通过 TCP 探测验证可达性（发 `[0xAA,0x55,0x01]`，期望回 `[0xAA,0x55,0x02]`）
-3. 注册成功后每 30 秒心跳上报（房间列表 + 活跃连接数）
-4. 关闭时 `DELETE /api/nodes/{id}` 注销
+1. 启动时向主 API `POST /api/nodes/register` 注册（携带注册密钥）
+2. 主 API 验证密钥有效性（数据库中存在且 IsActive）
+3. 主 API 通过 TCP 探测验证可达性（发 `[0xAA,0x55,0x01]`，期望回 `[0xAA,0x55,0x02]`）
+4. 注册成功后返回节点 ID、Token、JWT 公钥（PEM）、Issuer、Audience
+5. 每 30 秒心跳上报（房间列表 + 活跃连接数）
+6. 关闭时 `DELETE /api/nodes/{id}` 注销
+
+密钥由管理员在管理面板的联机管理选项卡中创建，同一密钥可供多个节点使用。
 
 ## 玩家认证
 
-节点不做本地 token 验证。收到客户端 token 后向主 API `GET /api/auth/profile` 验证：
-- 200 → 认证成功，获取 userId/nickname/avatarUrl
-- 401 → token 无效
+注册成功时主 API 返回 JWT RSA 公钥，节点在本地使用公钥验签玩家 Token，无需回调主 API：
+- 验证 Issuer、Audience、签名、过期时间
+- 从 `userId` 或 `sub` claim 提取用户 ID
 
 ## 房间状态机
 
