@@ -108,6 +108,7 @@ public class GameNode
     {
         var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl);
         room.OnStateChanged = NotifyRoomStateChanged;
+        room.OnRoomEmpty = RemoveRoom;
         _rooms[roomId] = room;
         Console.WriteLine($"[Cnoawa] 房间创建: #{roomId} \"{roomName}\" (创建者: userId={creator.UserId})");
         NotifyRoomStateChanged();

@@ -35,6 +35,7 @@ public class NodeRoom : IDisposable
     public bool IsEmpty => _players.IsEmpty;
     public int PlayerCount => _players.Count;
     public Action? OnStateChanged { get; set; }
+    public Action<int>? OnRoomEmpty { get; set; }
 
     public NodeRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator, string apiUrl)
     {
@@ -65,7 +66,11 @@ public class NodeRoom : IDisposable
         {
             _readyState.Remove(conn.PlayerId);
 
-            if (IsEmpty) return;
+            if (IsEmpty)
+            {
+                OnRoomEmpty?.Invoke(RoomId);
+                return;
+            }
 
             if (Creator != null && conn.ConnId == Creator.ConnId)
             {
