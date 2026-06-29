@@ -38,6 +38,18 @@ class Program
         var node = new GameNode(port);
         node.ApiUrl = apiUrl.TrimEnd('/');
 
+        // 先启动 TCP 监听，确保注册时端口已就绪
+        var cts = new CancellationTokenSource();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            Console.WriteLine("\n[Cnoawa] 正在关闭...");
+            cts.Cancel();
+        };
+
+        var nodeTask = node.RunAsync(cts.Token);
+        await Task.Delay(200);
+
         var registration = new ApiRegistration(apiUrl, publicAddress, port, name, message, registrationKey, node);
 
         Console.WriteLine($"[Cnoawa] 正在向 {apiUrl} 注册...");
@@ -47,21 +59,13 @@ class Program
             Console.WriteLine("[Cnoawa] 注册失败，将以离线模式运行（不在主 API 列表中显示）");
         }
 
-        var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true;
-            Console.WriteLine("\n[Cnoawa] 正在关闭...");
-            cts.Cancel();
-        };
-
         Task? heartbeatTask = null;
         if (registered)
             heartbeatTask = Task.Run(() => registration.HeartbeatLoop(cts.Token));
 
         try
         {
-            await node.RunAsync(cts.Token);
+            await nodeTask;
         }
         finally
         {
