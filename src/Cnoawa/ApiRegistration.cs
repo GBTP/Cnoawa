@@ -69,6 +69,7 @@ public class ApiRegistration
     }
 
     CancellationTokenSource? _heartbeatDelayCts;
+    long _lastHeartbeatTime;
 
     public async Task HeartbeatLoop(CancellationToken ct)
     {
@@ -83,11 +84,17 @@ public class ApiRegistration
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
-                    // delay 被 TriggerHeartbeat 取消，立即发送
                 }
                 _heartbeatDelayCts = null;
 
                 if (ct.IsCancellationRequested) break;
+
+                var now = Environment.TickCount64;
+                var elapsed = now - _lastHeartbeatTime;
+                if (elapsed < 1000)
+                    await Task.Delay((int)(1000 - elapsed), ct);
+
+                _lastHeartbeatTime = Environment.TickCount64;
                 await SendHeartbeatAsync();
             }
         }
