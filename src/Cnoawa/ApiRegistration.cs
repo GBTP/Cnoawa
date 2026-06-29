@@ -13,9 +13,12 @@ public class ApiRegistration
     readonly string _registrationKey;
     readonly GameNode _node;
     readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(10) };
+    readonly string _commitHash;
 
     int _nodeId;
     string _token = "";
+
+    public Action? OnForceUpdate { get; set; }
 
     public ApiRegistration(string apiUrl, string publicAddress, ushort port, string name, string message, string registrationKey, GameNode node)
     {
@@ -26,6 +29,25 @@ public class ApiRegistration
         _message = message;
         _registrationKey = registrationKey;
         _node = node;
+        _commitHash = GetGitCommitHash();
+    }
+
+    static string GetGitCommitHash()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("git", "rev-parse --short HEAD")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            var hash = proc?.StandardOutput.ReadToEnd().Trim() ?? "";
+            proc?.WaitForExit(3000);
+            return hash;
+        }
+        catch { return "unknown"; }
     }
 
     public async Task<bool> RegisterAsync()
@@ -124,7 +146,8 @@ public class ApiRegistration
             {
                 activeRooms = _node.ActiveRoomCount,
                 activeConnections = _node.ActiveConnectionCount,
-                rooms
+                rooms,
+                commitHash = _commitHash
             };
 
             var msg = new HttpRequestMessage(HttpMethod.Post, $"{_apiUrl}/api/nodes/{_nodeId}/heartbeat")
@@ -144,6 +167,11 @@ public class ApiRegistration
                         Console.WriteLine($"[心跳] 收到管理员指令：关闭房间 #{roomId}");
                         _node.RemoveRoom(roomId);
                     }
+                }
+                if (body?.ForceUpdate == true)
+                {
+                    Console.WriteLine("[心跳] 收到强制更新指令，准备关闭节点...");
+                    OnForceUpdate?.Invoke();
                 }
                 Console.WriteLine($"[心跳] 已发送 (房间:{rooms.Count}, 连接:{_node.ActiveConnectionCount})");
             }
@@ -192,5 +220,6 @@ public class ApiRegistration
     class HeartbeatResponse
     {
         [JsonPropertyName("roomsToClose")] public List<int>? RoomsToClose { get; set; }
+        [JsonPropertyName("forceUpdate")] public bool ForceUpdate { get; set; }
     }
 }

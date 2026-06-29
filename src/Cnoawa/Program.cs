@@ -42,6 +42,11 @@ class Program
         node.OnRoomStateChanged = () => { registration.TriggerHeartbeat(); return Task.CompletedTask; };
 
         var cts = new CancellationTokenSource();
+        registration.OnForceUpdate = () =>
+        {
+            Console.WriteLine("[Cnoawa] 收到更新指令，正在关闭...");
+            cts.Cancel();
+        };
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;
