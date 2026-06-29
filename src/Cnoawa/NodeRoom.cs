@@ -100,12 +100,6 @@ public class NodeRoom : IDisposable
                     && _players.Values.All(p => _readyForPlay.Contains(p.PlayerId)))
                     _readyPhaseCts.Cancel();
             }
-            else if (State == RoomState.Results)
-            {
-                _readyState.Remove(conn.PlayerId);
-                if (_players.Count > 0 && _players.Values.All(p => _readyState.TryGetValue(p.PlayerId, out var r) && r))
-                    SetState(RoomState.Lobby);
-            }
 
             BroadcastSnapshot();
             OnStateChanged?.Invoke();
@@ -214,7 +208,6 @@ public class NodeRoom : IDisposable
                     break;
 
                 case MessageType.BackToLobby:
-                    HandleBackToLobby(sender);
                     break;
 
                 case MessageType.Kick:
@@ -525,7 +518,7 @@ public class NodeRoom : IDisposable
             rankings[i].Rank = i + 1;
 
         Broadcast(MessageType.Results, new ResultsMessage { Rankings = rankings });
-        SetState(RoomState.Results);
+        SetState(RoomState.Lobby);
     }
 
     void HandleSkillCast(NodeConnection sender, byte[] payload)
@@ -581,16 +574,6 @@ public class NodeRoom : IDisposable
         OnStateChanged?.Invoke();
     }
 
-    void HandleBackToLobby(NodeConnection sender)
-    {
-        if (State != RoomState.Results) return;
-        _readyState[sender.PlayerId] = true;
-        BroadcastSnapshot();
-
-        if (_players.Values.All(p => _readyState.TryGetValue(p.PlayerId, out var r) && r))
-            SetState(RoomState.Lobby);
-    }
-
     CancellationTokenSource? _voteTimeoutCts;
 
     void SetState(RoomState state)
@@ -612,10 +595,6 @@ public class NodeRoom : IDisposable
             _readyForPlay.Clear();
             SelectedLevelId = null;
             SelectedLevelName = null;
-        }
-        else if (state == RoomState.Results)
-        {
-            _readyState.Clear();
         }
         else if (state == RoomState.ChartSelect)
         {
