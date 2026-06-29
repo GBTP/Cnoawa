@@ -70,6 +70,8 @@ public class ApiRegistration
 
     public async Task HeartbeatLoop(CancellationToken ct)
     {
+        try
+        {
         while (!ct.IsCancellationRequested)
         {
             await Task.Delay(30_000, ct);
@@ -109,6 +111,8 @@ public class ApiRegistration
                 Console.WriteLine($"[心跳] 异常: {ex.Message}");
             }
         }
+        }
+        catch (OperationCanceledException) { }
     }
 
     public async Task UnregisterAsync()

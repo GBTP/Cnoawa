@@ -53,17 +53,26 @@ public class GameNode
         {
             while (!_cts.Token.IsCancellationRequested)
             {
-                var tcp = await _listener.AcceptTcpClientAsync(_cts.Token);
-                tcp.NoDelay = true;
-                tcp.SendBufferSize = 256 * 1024;
-                tcp.ReceiveBufferSize = 256 * 1024;
+                try
+                {
+                    var tcp = await _listener.AcceptTcpClientAsync(_cts.Token);
+                    tcp.NoDelay = true;
+                    tcp.SendBufferSize = 256 * 1024;
+                    tcp.ReceiveBufferSize = 256 * 1024;
 
-                var connId = Interlocked.Increment(ref _nextConnId);
-                var conn = new NodeConnection(connId, tcp, this);
-                _connections[connId] = conn;
-                _ = conn.RunAsync(_cts.Token);
+                    var connId = Interlocked.Increment(ref _nextConnId);
+                    var conn = new NodeConnection(connId, tcp, this);
+                    _connections[connId] = conn;
+                    _ = conn.RunAsync(_cts.Token);
 
-                Console.WriteLine($"[Cnoawa] 新连接: #{connId} ({tcp.Client.RemoteEndPoint})");
+                    Console.WriteLine($"[Cnoawa] 新连接: #{connId} ({tcp.Client.RemoteEndPoint})");
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Cnoawa] Accept 异常: {ex.Message}");
+                    await Task.Delay(100);
+                }
             }
         }
         catch (OperationCanceledException) { }
