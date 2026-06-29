@@ -56,10 +56,13 @@ class Program
         var registered = await registration.RegisterAsync();
         if (!registered)
         {
-            Console.WriteLine("[Cnoawa] 注册失败，将以离线模式运行（不在主 API 列表中显示）");
+            Console.WriteLine("[Cnoawa] 注册失败。没有 JWT 公钥无法验证玩家身份，节点无法运行。");
+            Console.WriteLine("[Cnoawa] 请检查：1) 主 API 是否在线  2) 注册密钥是否正确  3) 本节点是否可从外网访问");
+            cts.Cancel();
+            return;
         }
 
-        Task? heartbeatTask = registered ? Task.Run(() => registration.HeartbeatLoop(cts.Token)) : null;
+        Task? heartbeatTask = Task.Run(() => registration.HeartbeatLoop(cts.Token));
 
         try
         {
@@ -67,12 +70,9 @@ class Program
         }
         finally
         {
-            if (registered)
-            {
-                await registration.UnregisterAsync();
-                if (heartbeatTask != null)
-                    await heartbeatTask;
-            }
+            await registration.UnregisterAsync();
+            if (heartbeatTask != null)
+                await heartbeatTask;
         }
     }
 }

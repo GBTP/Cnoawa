@@ -17,7 +17,6 @@ public class NodeRoom : IDisposable
     readonly Dictionary<byte, int> _skillCooldown = new();
     readonly string _apiUrl;
     static readonly HttpClient s_http = new() { Timeout = TimeSpan.FromSeconds(10) };
-    int _nextPlayerId = 1;
     bool _disposed;
 
     readonly object _stateLock = new();
@@ -111,6 +110,12 @@ public class NodeRoom : IDisposable
     {
         lock (_stateLock)
         {
+            if (_disposed)
+            {
+                conn.SendMessage(MessageType.JoinRoomResult, new JoinRoomResultMessage { Success = false, Reason = "房间正在解散" });
+                return;
+            }
+
             if (State != RoomState.Lobby)
             {
                 conn.SendMessage(MessageType.JoinRoomResult, new JoinRoomResultMessage { Success = false, Reason = "房间已在游戏中" });
@@ -148,9 +153,10 @@ public class NodeRoom : IDisposable
 
     void AddPlayerInternal(NodeConnection conn)
     {
-        var id = _nextPlayerId++;
-        if (_nextPlayerId > 254) _nextPlayerId = 1;
-        conn.PlayerId = (byte)id;
+        byte id = 1;
+        var usedIds = _players.Values.Select(p => p.PlayerId).ToHashSet();
+        while (usedIds.Contains(id) && id < 255) id++;
+        conn.PlayerId = id;
         conn.CurrentRoom = this;
         _players[conn.ConnId] = conn;
     }
@@ -368,10 +374,12 @@ public class NodeRoom : IDisposable
 
     async Task StartReadyPhase()
     {
-        _readyForPlay.Clear();
-        _readyPhaseCts = new CancellationTokenSource();
-
-        BroadcastSnapshot();
+        lock (_stateLock)
+        {
+            _readyForPlay.Clear();
+            _readyPhaseCts = new CancellationTokenSource();
+            BroadcastSnapshot();
+        }
 
         try
         {

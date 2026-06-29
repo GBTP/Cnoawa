@@ -135,6 +135,15 @@ public class ApiRegistration
             var response = await _http.SendAsync(msg);
             if (response.IsSuccessStatusCode)
             {
+                var body = await response.Content.ReadFromJsonAsync<HeartbeatResponse>();
+                if (body?.RoomsToClose != null)
+                {
+                    foreach (var roomId in body.RoomsToClose)
+                    {
+                        Console.WriteLine($"[心跳] 收到管理员指令：关闭房间 #{roomId}");
+                        _node.RemoveRoom(roomId);
+                    }
+                }
                 Console.WriteLine($"[心跳] 已发送 (房间:{rooms.Count}, 连接:{_node.ActiveConnectionCount})");
             }
             else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -177,5 +186,10 @@ public class ApiRegistration
         [JsonPropertyName("jwtPublicKey")] public string JwtPublicKey { get; set; } = "";
         [JsonPropertyName("jwtIssuer")] public string JwtIssuer { get; set; } = "";
         [JsonPropertyName("jwtAudience")] public string JwtAudience { get; set; } = "";
+    }
+
+    class HeartbeatResponse
+    {
+        [JsonPropertyName("roomsToClose")] public List<int>? RoomsToClose { get; set; }
     }
 }
