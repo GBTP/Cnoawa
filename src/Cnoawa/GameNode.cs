@@ -132,7 +132,12 @@ public class GameNode
 
     void NotifyRoomStateChanged()
     {
-        _ = OnRoomStateChanged?.Invoke();
+        if (OnRoomStateChanged == null)
+        {
+            Console.WriteLine("[Cnoawa] 警告: OnRoomStateChanged 未注册");
+            return;
+        }
+        _ = OnRoomStateChanged.Invoke();
     }
 
     async Task CleanupLoop(CancellationToken ct)
