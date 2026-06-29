@@ -8,6 +8,7 @@ namespace Cnoawa;
 public class NodeRoom : IDisposable
 {
     readonly ConcurrentDictionary<int, NodeConnection> _players = new();
+    readonly Dictionary<byte, bool> _readyState = new();
     readonly Dictionary<byte, VoteEntry> _votes = new();
     readonly Dictionary<byte, float> _downloadProgress = new();
     readonly HashSet<byte> _finishedPlayers = new();
@@ -17,6 +18,7 @@ public class NodeRoom : IDisposable
     readonly string _apiUrl;
     static readonly HttpClient s_http = new() { Timeout = TimeSpan.FromSeconds(10) };
     int _nextPlayerId = 1;
+    bool _disposed;
 
     readonly object _stateLock = new();
 
@@ -48,11 +50,8 @@ public class NodeRoom : IDisposable
     {
         lock (_stateLock)
         {
-            var id = _nextPlayerId++;
-            if (id > 254) _nextPlayerId = 1;
-            conn.PlayerId = (byte)id;
-            conn.CurrentRoom = this;
-            _players[conn.ConnId] = conn;
+            AddPlayerInternal(conn);
+            BroadcastSnapshot();
         }
     }
 
@@ -63,15 +62,10 @@ public class NodeRoom : IDisposable
 
         lock (_stateLock)
         {
-            Broadcast(MessageType.PlayerLeft, new PlayerLeftMessage
-            {
-                PlayerId = conn.PlayerId,
-                Reason = "断开连接"
-            });
+            _readyState.Remove(conn.PlayerId);
 
             if (IsEmpty) return;
 
-            // 房主退出，转移权限给下一个玩家
             if (Creator != null && conn.ConnId == Creator.ConnId)
             {
                 var next = _players.Values.FirstOrDefault();
@@ -80,7 +74,6 @@ public class NodeRoom : IDisposable
                     Console.WriteLine($"[房间#{RoomId}] 房主已转移给 userId={next.UserId}");
             }
 
-            // 游玩中有人退出，检查是否全部完成
             if (State == RoomState.Playing)
             {
                 _finishedPlayers.Add(conn.PlayerId);
@@ -95,8 +88,14 @@ public class NodeRoom : IDisposable
             else if (State == RoomState.Downloading)
             {
                 _downloadProgress.Remove(conn.PlayerId);
+                _readyForPlay.Remove(conn.PlayerId);
                 CheckAllDownloaded();
+                if (_readyPhaseCts != null && !_readyPhaseCts.IsCancellationRequested
+                    && _players.Values.All(p => _readyForPlay.Contains(p.PlayerId)))
+                    _readyPhaseCts.Cancel();
             }
+
+            BroadcastSnapshot();
         }
     }
 
@@ -124,25 +123,15 @@ public class NodeRoom : IDisposable
 
             AddPlayerInternal(conn);
 
-            var players = _players.Values.Select(p => new PlayerInfo
-            {
-                PlayerId = p.PlayerId,
-                UserId = p.UserId
-            }).ToArray();
-
             conn.SendMessage(MessageType.JoinRoomResult, new JoinRoomResultMessage
             {
                 Success = true,
-                Players = players,
+                Players = _players.Values.Select(p => new PlayerInfo { PlayerId = p.PlayerId, UserId = p.UserId }).ToArray(),
                 State = (byte)State,
                 RoomType = (byte)RoomType
             });
 
-            BroadcastExcept(conn.ConnId, MessageType.PlayerJoined, new PlayerJoinedMessage
-            {
-                PlayerId = conn.PlayerId,
-                UserId = conn.UserId
-            });
+            BroadcastSnapshot();
 
             Console.WriteLine($"[房间#{RoomId}] userId={conn.UserId} 加入 (playerId={conn.PlayerId}, 当前{_players.Count}人)");
         }
@@ -164,7 +153,7 @@ public class NodeRoom : IDisposable
             switch (type)
             {
                 case MessageType.LeaveRoom:
-                    break; // RemovePlayer 已在外部处理
+                    break;
 
                 case MessageType.Ready:
                     HandleReady(sender, payload);
@@ -215,7 +204,6 @@ public class NodeRoom : IDisposable
         }
     }
 
-    // LeaveRoom 需要在 lock 外调用 RemovePlayer（因为涉及 ConcurrentDictionary.TryRemove）
     public void HandleLeaveRoom(NodeConnection sender)
     {
         RemovePlayer(sender);
@@ -235,7 +223,11 @@ public class NodeRoom : IDisposable
             return;
         }
 
-        BroadcastReadyStatus();
+        if (State == RoomState.Lobby)
+        {
+            _readyState[sender.PlayerId] = msg.IsReady;
+            BroadcastSnapshot();
+        }
     }
 
     void HandleRoomConfig(NodeConnection sender, byte[] payload)
@@ -245,6 +237,7 @@ public class NodeRoom : IDisposable
         if (msg == null) return;
         RoomType = (RoomType)msg.RoomType;
         Broadcast(MessageType.RoomConfig, msg);
+        BroadcastSnapshot();
     }
 
     void HandleVote(NodeConnection sender, byte[] payload)
@@ -354,6 +347,8 @@ public class NodeRoom : IDisposable
 
     void CheckAllDownloaded()
     {
+        if (_readyPhaseCts != null && !_readyPhaseCts.IsCancellationRequested)
+            return;
         if (_players.Values.All(p => _downloadProgress.TryGetValue(p.PlayerId, out var prog) && prog >= 1f))
             _ = StartReadyPhase();
     }
@@ -367,7 +362,7 @@ public class NodeRoom : IDisposable
         _readyForPlay.Clear();
         _readyPhaseCts = new CancellationTokenSource();
 
-        BroadcastReadyStatus();
+        BroadcastSnapshot();
 
         try
         {
@@ -385,6 +380,8 @@ public class NodeRoom : IDisposable
         {
             _readyPhaseCts = null;
 
+            if (_disposed || _players.IsEmpty) return;
+
             SetState(RoomState.Playing);
             _finishedPlayers.Clear();
             _lastComboTime.Clear();
@@ -395,6 +392,8 @@ public class NodeRoom : IDisposable
                 _lastComboTime[conn.PlayerId] = now;
             Broadcast(MessageType.GameStart, new StateChangeMessage { State = (byte)RoomState.Playing });
         }
+
+        if (_disposed || _players.IsEmpty) return;
 
         _playingTimeoutCts = new CancellationTokenSource();
         _ = ComboHeartbeatCheck(_playingTimeoutCts.Token);
@@ -437,7 +436,7 @@ public class NodeRoom : IDisposable
     {
         if (State != RoomState.Downloading) return;
         _readyForPlay.Add(sender.PlayerId);
-        BroadcastReadyStatus();
+        BroadcastSnapshot();
 
         if (_players.Values.All(p => _readyForPlay.Contains(p.PlayerId)))
             _readyPhaseCts?.Cancel();
@@ -451,11 +450,9 @@ public class NodeRoom : IDisposable
         var msg = MemoryPackSerializer.Deserialize<ComboUpdateMessage>(payload);
         if (msg == null) return;
 
-        // 基本合理性校验
         if (msg.Score < 0 || msg.Score > 10100000 || msg.Combo < 0 || msg.MaxCombo < 0)
             return;
 
-        // 分数不能倒退（允许相等）
         if (_lastReportedScore.TryGetValue(sender.PlayerId, out var lastScore) && msg.Score < lastScore)
             return;
         _lastReportedScore[sender.PlayerId] = msg.Score;
@@ -474,11 +471,12 @@ public class NodeRoom : IDisposable
     void HandlePlayerFinished(NodeConnection sender, byte[] payload)
     {
         if (State != RoomState.Playing) return;
-        if (!_finishedPlayers.Add(sender.PlayerId)) return; // 防重复
+        if (!_finishedPlayers.Add(sender.PlayerId)) return;
 
         var msg = MemoryPackSerializer.Deserialize<PlayerFinishedMessage>(payload);
         if (msg == null) return;
 
+        msg.PlayerId = sender.PlayerId;
         BroadcastExcept(sender.ConnId, MessageType.PlayerFinished, msg);
         CheckAllFinished();
     }
@@ -491,6 +489,20 @@ public class NodeRoom : IDisposable
         _playingTimeoutCts = null;
         _lastComboTime.Clear();
 
+        var rankings = _players.Values
+            .Select(p => new PlayerResult
+            {
+                PlayerId = p.PlayerId,
+                UserId = p.UserId,
+                Score = _lastReportedScore.TryGetValue(p.PlayerId, out var s) ? s : 0
+            })
+            .OrderByDescending(r => r.Score)
+            .ToArray();
+
+        for (int i = 0; i < rankings.Length; i++)
+            rankings[i].Rank = i + 1;
+
+        Broadcast(MessageType.Results, new ResultsMessage { Rankings = rankings });
         SetState(RoomState.Results);
     }
 
@@ -502,7 +514,6 @@ public class NodeRoom : IDisposable
         var msg = MemoryPackSerializer.Deserialize<SkillCastMessage>(payload);
         if (msg == null) return;
 
-        // 频率限制：每个玩家每5秒最多释放一次技能
         var now = Environment.TickCount;
         if (_skillCooldown.TryGetValue(sender.PlayerId, out var lastCast) && now - lastCast < 5000)
         {
@@ -539,15 +550,12 @@ public class NodeRoom : IDisposable
 
         _players.TryRemove(target.ConnId, out _);
         target.CurrentRoom = null;
-
-        Broadcast(MessageType.PlayerLeft, new PlayerLeftMessage
-        {
-            PlayerId = target.PlayerId,
-            Reason = "被踢出"
-        });
+        _readyState.Remove(target.PlayerId);
 
         target.SendMessage(MessageType.Kick, msg);
         target.Close();
+
+        BroadcastSnapshot();
     }
 
     void SetState(RoomState state)
@@ -562,6 +570,8 @@ public class NodeRoom : IDisposable
             _finishedPlayers.Clear();
             _lastReportedScore.Clear();
             _skillCooldown.Clear();
+            _readyState.Clear();
+            _readyForPlay.Clear();
             SelectedLevelId = null;
             SelectedLevelName = null;
         }
@@ -569,12 +579,39 @@ public class NodeRoom : IDisposable
         {
             _votes.Clear();
             _downloadProgress.Clear();
+            _readyState.Clear();
         }
+
+        BroadcastSnapshot();
     }
 
-    void BroadcastReadyStatus()
+    void BroadcastSnapshot()
     {
-        // 简化实现：这里只通知状态变化
+        var hostPlayerId = Creator?.PlayerId ?? (byte)0;
+        var players = _players.Values.Select(p => new SnapshotPlayer
+        {
+            PlayerId = p.PlayerId,
+            UserId = p.UserId,
+            IsReady = State == RoomState.Downloading
+                ? _readyForPlay.Contains(p.PlayerId)
+                : _readyState.TryGetValue(p.PlayerId, out var r) && r,
+            DownloadProgress = _downloadProgress.TryGetValue(p.PlayerId, out var prog) ? prog : 0f
+        }).ToArray();
+
+        foreach (var conn in _players.Values)
+        {
+            var msg = new RoomSnapshotMessage
+            {
+                State = (byte)State,
+                RoomType = (byte)RoomType,
+                HostPlayerId = hostPlayerId,
+                LocalPlayerId = conn.PlayerId,
+                Players = players,
+                SelectedLevelId = SelectedLevelId,
+                SelectedLevelName = SelectedLevelName
+            };
+            conn.SendMessage(MessageType.RoomSnapshot, msg);
+        }
     }
 
     void BroadcastVoteStatus()
@@ -627,6 +664,7 @@ public class NodeRoom : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         _readyPhaseCts?.Cancel();
         _playingTimeoutCts?.Cancel();
         foreach (var conn in _players.Values)

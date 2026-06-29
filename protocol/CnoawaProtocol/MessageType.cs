@@ -15,6 +15,7 @@ namespace CnoawaProtocol
         PlayerLeft = 0x07,
         LeaveRoom = 0x08,
         Kick = 0x09,
+        RoomSnapshot = 0x0A,
 
         // 房间配置与状态
         RoomConfig = 0x10,

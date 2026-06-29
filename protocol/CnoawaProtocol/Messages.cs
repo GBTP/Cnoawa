@@ -76,6 +76,27 @@ namespace CnoawaProtocol
         public byte PlayerId { get; set; }
     }
 
+    [MemoryPackable]
+    public partial class RoomSnapshotMessage
+    {
+        public byte State { get; set; }
+        public byte RoomType { get; set; }
+        public byte HostPlayerId { get; set; }
+        public byte LocalPlayerId { get; set; }
+        public SnapshotPlayer[] Players { get; set; } = [];
+        public int? SelectedLevelId { get; set; }
+        public string? SelectedLevelName { get; set; }
+    }
+
+    [MemoryPackable]
+    public partial class SnapshotPlayer
+    {
+        public byte PlayerId { get; set; }
+        public int UserId { get; set; }
+        public bool IsReady { get; set; }
+        public float DownloadProgress { get; set; }
+    }
+
     // === 房间配置与状态 ===
 
     [MemoryPackable]
@@ -206,6 +227,7 @@ namespace CnoawaProtocol
     [MemoryPackable]
     public partial class PlayerFinishedMessage
     {
+        public byte PlayerId { get; set; }
         public int FinalScore { get; set; }
         public int MaxPure { get; set; }
         public int Pure { get; set; }
