@@ -110,6 +110,7 @@ public class ApiRegistration
     public void TriggerHeartbeat()
     {
         _heartbeatPending = true;
+        Console.WriteLine("[心跳] 触发即时更新");
         _heartbeatDelayCts?.Cancel();
     }
 
@@ -117,11 +118,12 @@ public class ApiRegistration
     {
         try
         {
+            var rooms = _node.GetRoomInfos();
             var request = new
             {
                 activeRooms = _node.ActiveRoomCount,
                 activeConnections = _node.ActiveConnectionCount,
-                rooms = _node.GetRoomInfos()
+                rooms
             };
 
             var msg = new HttpRequestMessage(HttpMethod.Post, $"{_apiUrl}/api/nodes/{_nodeId}/heartbeat")
@@ -131,7 +133,11 @@ public class ApiRegistration
             msg.Headers.Add("X-Node-Token", _token);
 
             var response = await _http.SendAsync(msg);
-            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            if (response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"[心跳] 已发送 (房间:{rooms.Count}, 连接:{_node.ActiveConnectionCount})");
+            }
+            else if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             {
                 Console.WriteLine("[心跳] 收到 404，尝试重新注册...");
                 var reRegistered = await RegisterAsync();
