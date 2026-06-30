@@ -65,7 +65,7 @@ class Program
             if (registered) break;
             if (attempt < 3)
             {
-                Console.WriteLine($"[Cnoawa] 注册失败，{11}秒后重试 ({attempt}/3)...");
+                Console.WriteLine($"[Cnoawa] 注册失败，11秒后重试 ({attempt}/3)...");
                 await Task.Delay(11000);
             }
         }
