@@ -10,6 +10,8 @@ namespace Cnoawa;
 
 public class GameNode
 {
+    const int MaxPlayersPerRoom = 32;
+
     readonly ushort _port;
     readonly ConcurrentDictionary<int, NodeConnection> _connections = new();
     readonly ConcurrentDictionary<int, NodeRoom> _rooms = new();
@@ -23,6 +25,8 @@ public class GameNode
 
     public string ApiUrl { get; set; } = "";
     public string NodeToken { get; set; } = "";
+    public int MaxRooms { get; set; } = 50;
+    public int MaxConnections => MaxRooms * MaxPlayersPerRoom;
     public int ActiveRoomCount => _rooms.Count;
     public int ActiveConnectionCount => _connections.Count;
     public Func<Task>? OnRoomStateChanged { get; set; }
@@ -59,6 +63,13 @@ public class GameNode
                 try
                 {
                     var tcp = await _listener.AcceptTcpClientAsync(_cts.Token);
+
+                    if (_connections.Count >= MaxConnections)
+                    {
+                        tcp.Close();
+                        continue;
+                    }
+
                     tcp.NoDelay = true;
                     tcp.SendBufferSize = 256 * 1024;
                     tcp.ReceiveBufferSize = 256 * 1024;
@@ -91,6 +102,18 @@ public class GameNode
         }
     }
 
+    public void DisconnectExistingUser(int userId, int exceptConnId)
+    {
+        foreach (var conn in _connections.Values)
+        {
+            if (conn.UserId == userId && conn.IsAuthenticated && conn.ConnId != exceptConnId)
+            {
+                Console.WriteLine($"[Cnoawa] 顶号: userId={userId}, 踢掉旧连接 #{conn.ConnId}");
+                conn.Close();
+            }
+        }
+    }
+
     public void RemoveConnection(int connId)
     {
         if (_connections.TryRemove(connId, out var conn))
@@ -107,8 +130,10 @@ public class GameNode
         return room;
     }
 
-    public NodeRoom CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator)
+    public NodeRoom? CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator)
     {
+        if (_rooms.ContainsKey(roomId))
+            return null;
         var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl, NodeToken);
         room.OnStateChanged = NotifyRoomStateChanged;
         room.OnRoomEmpty = RemoveRoom;
@@ -156,7 +181,7 @@ public class GameNode
         }
     }
 
-    public int? ValidateToken(string token)
+    public (int userId, int? roomId)? ValidateToken(string token)
     {
         if (_jwtPublicKey == null) return null;
 
@@ -179,10 +204,15 @@ public class GameNode
                 ?? principal.FindFirst("sub")?.Value
                 ?? principal.FindFirst("userId")?.Value;
 
-            if (userIdClaim != null && int.TryParse(userIdClaim, out var userId))
-                return userId;
+            if (userIdClaim == null || !int.TryParse(userIdClaim, out var userId))
+                return null;
 
-            return null;
+            int? roomId = null;
+            var roomIdClaim = principal.FindFirst("roomId")?.Value;
+            if (roomIdClaim != null && int.TryParse(roomIdClaim, out var rid))
+                roomId = rid;
+
+            return (userId, roomId);
         }
         catch
         {

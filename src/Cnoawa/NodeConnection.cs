@@ -22,8 +22,9 @@ public class NodeConnection
     public int ConnId => _connId;
     public bool IsAuthenticated { get; private set; }
     public int UserId { get; private set; }
+    public int? AuthorizedRoomId { get; private set; }
     public byte PlayerId { get; set; }
-    public NodeRoom? CurrentRoom { get; set; }
+    public volatile NodeRoom? CurrentRoom;
 
     public NodeConnection(int connId, TcpClient tcp, GameNode node)
     {
@@ -40,6 +41,7 @@ public class NodeConnection
 
         var writeTask = WriteLoop(ct);
         var pingTask = PingLoop(ct);
+        var authTimeoutTask = AuthTimeoutAsync(ct);
 
         try
         {
@@ -75,42 +77,66 @@ public class NodeConnection
             _node.RemoveConnection(_connId);
             await writeTask;
             await pingTask;
+            await authTimeoutTask;
         }
     }
 
     void HandleMessage(MessageType type, byte[] payload)
     {
-        switch (type)
+        try
         {
-            case MessageType.Auth:
-                HandleAuth(payload);
-                break;
-            case MessageType.Ping:
-                Send(FrameCodec.EncodeEmpty(MessageType.Pong));
-                break;
-            case MessageType.Pong:
-                break;
-            default:
-                if (!IsAuthenticated)
-                {
-                    SendError(401, "未认证");
-                    return;
-                }
-                if (type == MessageType.LeaveRoom && CurrentRoom != null)
-                {
-                    CurrentRoom.HandleLeaveRoom(this);
-                    return;
-                }
-                if (CurrentRoom != null)
-                    CurrentRoom.HandleMessage(this, type, payload);
-                else
-                    HandleLobbyMessage(type, payload);
-                break;
+            switch (type)
+            {
+                case MessageType.Auth:
+                    HandleAuth(payload);
+                    break;
+                case MessageType.Ping:
+                    Send(FrameCodec.EncodeEmpty(MessageType.Pong));
+                    break;
+                case MessageType.Pong:
+                    break;
+                default:
+                    if (!IsAuthenticated)
+                    {
+                        SendError(401, "未认证");
+                        return;
+                    }
+                    if (type == MessageType.LeaveRoom && CurrentRoom != null)
+                    {
+                        CurrentRoom.HandleLeaveRoom(this);
+                        return;
+                    }
+                    if (CurrentRoom != null)
+                        CurrentRoom.HandleMessage(this, type, payload);
+                    else
+                        HandleLobbyMessage(type, payload);
+                    break;
+            }
         }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Cnoawa] #{_connId} 消息处理异常 ({type}): {ex.Message}");
+        }
+    }
+
+    async Task AuthTimeoutAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(5000, ct);
+            if (!IsAuthenticated)
+            {
+                Console.WriteLine($"[Cnoawa] #{_connId} 认证超时，断开");
+                Close();
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     void HandleAuth(byte[] payload)
     {
+        if (IsAuthenticated) return;
+
         var msg = MemoryPackSerializer.Deserialize<AuthMessage>(payload);
         if (msg == null || string.IsNullOrEmpty(msg.Token))
         {
@@ -129,15 +155,18 @@ public class NodeConnection
             return;
         }
 
-        var userId = _node.ValidateToken(msg.Token);
-        if (userId == null)
+        var result = _node.ValidateToken(msg.Token);
+        if (result == null)
         {
             SendMessage(MessageType.AuthResult, new AuthResultMessage { Success = false, Reason = "Token 无效或已过期" });
             return;
         }
 
         IsAuthenticated = true;
-        UserId = userId.Value;
+        UserId = result.Value.userId;
+        AuthorizedRoomId = result.Value.roomId;
+
+        _node.DisconnectExistingUser(UserId, _connId);
 
         SendMessage(MessageType.AuthResult, new AuthResultMessage
         {
@@ -156,7 +185,18 @@ public class NodeConnection
             case MessageType.CreateRoom:
                 var create = MemoryPackSerializer.Deserialize<CreateRoomMessage>(payload);
                 if (create == null) return;
-                var room = _node.CreateRoom(create.RoomId, create.RoomName, create.MaxPlayers, create.IsPrivate, create.Password, this);
+                if (AuthorizedRoomId == null)
+                {
+                    SendError(403, "连接令牌中未包含房间ID");
+                    return;
+                }
+                var maxPlayers = Math.Clamp(create.MaxPlayers, 2, 32);
+                var room = _node.CreateRoom(AuthorizedRoomId.Value, create.RoomName, maxPlayers, create.IsPrivate, create.Password, this);
+                if (room == null)
+                {
+                    SendError(409, "房间ID已存在");
+                    return;
+                }
                 room.AddPlayer(this);
                 SendMessage(MessageType.CreateRoomResult, new CreateRoomResultMessage { Success = true });
                 break;

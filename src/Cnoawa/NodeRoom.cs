@@ -15,7 +15,7 @@ public class NodeRoom : IDisposable
     readonly Dictionary<byte, long> _lastComboTime = new();
     readonly Dictionary<byte, int> _lastReportedScore = new();
     readonly Dictionary<byte, int> _lastReportedMaxCombo = new();
-    readonly Dictionary<byte, int> _skillCooldown = new();
+    readonly Dictionary<byte, long> _skillCooldown = new();
     readonly string _apiUrl;
     readonly string _nodeToken;
     static readonly HttpClient s_http = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -62,11 +62,11 @@ public class NodeRoom : IDisposable
 
     public void RemovePlayer(NodeConnection conn)
     {
-        if (!_players.TryRemove(conn.ConnId, out _)) return;
-        conn.CurrentRoom = null;
-
         lock (_stateLock)
         {
+            if (!_players.TryRemove(conn.ConnId, out _)) return;
+            conn.CurrentRoom = null;
+
             _readyState.Remove(conn.PlayerId);
 
             if (IsEmpty)
@@ -566,7 +566,7 @@ public class NodeRoom : IDisposable
         var msg = MemoryPackSerializer.Deserialize<SkillCastMessage>(payload);
         if (msg == null) return;
 
-        var now = Environment.TickCount;
+        var now = Environment.TickCount64;
         if (_skillCooldown.TryGetValue(sender.PlayerId, out var lastCast) && now - lastCast < 5000)
         {
             sender.SendError(0, "技能冷却中");
@@ -600,15 +600,9 @@ public class NodeRoom : IDisposable
         var target = _players.Values.FirstOrDefault(p => p.PlayerId == msg.PlayerId);
         if (target == null) return;
 
-        _players.TryRemove(target.ConnId, out _);
-        target.CurrentRoom = null;
-        _readyState.Remove(target.PlayerId);
-
         target.SendMessage(MessageType.Kick, msg);
         target.CloseAfterSend();
-
-        BroadcastSnapshot();
-        OnStateChanged?.Invoke();
+        RemovePlayer(target);
     }
 
     CancellationTokenSource? _voteTimeoutCts;
