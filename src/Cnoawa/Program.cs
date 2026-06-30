@@ -55,7 +55,7 @@ class Program
         };
 
         var nodeTask = node.RunAsync(cts.Token);
-        await Task.Delay(500);
+        await node.ListeningReady.Task;
 
         Console.WriteLine($"[Cnoawa] 正在向 {apiUrl} 注册...");
         var registered = false;
@@ -65,8 +65,8 @@ class Program
             if (registered) break;
             if (attempt < 3)
             {
-                Console.WriteLine($"[Cnoawa] 注册失败，11秒后重试 ({attempt}/3)...");
-                await Task.Delay(11000);
+                Console.WriteLine($"[Cnoawa] 注册失败，5秒后重试 ({attempt}/3)...");
+                await Task.Delay(5000);
             }
         }
 

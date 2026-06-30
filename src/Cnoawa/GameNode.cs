@@ -30,6 +30,7 @@ public class GameNode
     public int ActiveRoomCount => _rooms.Count;
     public int ActiveConnectionCount => _connections.Count;
     public Func<Task>? OnRoomStateChanged { get; set; }
+    public TaskCompletionSource ListeningReady { get; } = new();
 
     public GameNode(ushort port)
     {
@@ -52,6 +53,7 @@ public class GameNode
         _listener = new TcpListener(IPAddress.Any, _port);
         _listener.Server.SetSocketOption(System.Net.Sockets.SocketOptionLevel.Socket, System.Net.Sockets.SocketOptionName.ReuseAddress, true);
         _listener.Start();
+        ListeningReady.TrySetResult();
         Console.WriteLine($"[Cnoawa] 游戏节点启动，端口: {_port}");
 
         _ = Task.Run(() => CleanupLoop(_cts.Token), _cts.Token);
