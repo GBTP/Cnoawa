@@ -132,12 +132,14 @@ public class GameNode
 
     public NodeRoom? CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator)
     {
-        if (_rooms.ContainsKey(roomId))
-            return null;
         var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl, NodeToken);
         room.OnStateChanged = NotifyRoomStateChanged;
         room.OnRoomEmpty = RemoveRoom;
-        _rooms[roomId] = room;
+        if (!_rooms.TryAdd(roomId, room))
+        {
+            room.Dispose();
+            return null;
+        }
         Console.WriteLine($"[Cnoawa] 房间创建: #{roomId} \"{roomName}\" (创建者: userId={creator.UserId})");
         NotifyRoomStateChanged();
         return room;

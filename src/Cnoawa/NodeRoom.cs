@@ -64,49 +64,54 @@ public class NodeRoom : IDisposable
     {
         lock (_stateLock)
         {
-            if (!_players.TryRemove(conn.ConnId, out _)) return;
-            conn.CurrentRoom = null;
-
-            _readyState.Remove(conn.PlayerId);
-
-            if (IsEmpty)
-            {
-                OnRoomEmpty?.Invoke(RoomId);
-                return;
-            }
-
-            if (Creator != null && conn.ConnId == Creator.ConnId)
-            {
-                var next = _players.Values.FirstOrDefault();
-                Creator = next;
-                if (next != null)
-                    Console.WriteLine($"[房间#{RoomId}] 房主已转移给 userId={next.UserId}");
-            }
-
-            if (State == RoomState.Playing)
-            {
-                _finishedPlayers.Add(conn.PlayerId);
-                CheckAllFinished();
-            }
-            else if (State == RoomState.ChartSelect)
-            {
-                _votes.Remove(conn.PlayerId);
-                if (_votes.Count >= _players.Count && _players.Count > 0)
-                    FinalizeVote();
-            }
-            else if (State == RoomState.Downloading)
-            {
-                _downloadProgress.Remove(conn.PlayerId);
-                _readyForPlay.Remove(conn.PlayerId);
-                CheckAllDownloaded();
-                if (_readyPhaseCts != null && !_readyPhaseCts.IsCancellationRequested
-                    && _players.Values.All(p => _readyForPlay.Contains(p.PlayerId)))
-                    _readyPhaseCts.Cancel();
-            }
-
-            BroadcastSnapshot();
-            OnStateChanged?.Invoke();
+            RemovePlayerInternal(conn);
         }
+    }
+
+    void RemovePlayerInternal(NodeConnection conn)
+    {
+        if (!_players.TryRemove(conn.ConnId, out _)) return;
+        conn.CurrentRoom = null;
+
+        _readyState.Remove(conn.PlayerId);
+
+        if (IsEmpty)
+        {
+            OnRoomEmpty?.Invoke(RoomId);
+            return;
+        }
+
+        if (Creator != null && conn.ConnId == Creator.ConnId)
+        {
+            var next = _players.Values.FirstOrDefault();
+            Creator = next;
+            if (next != null)
+                Console.WriteLine($"[房间#{RoomId}] 房主已转移给 userId={next.UserId}");
+        }
+
+        if (State == RoomState.Playing)
+        {
+            _finishedPlayers.Add(conn.PlayerId);
+            CheckAllFinished();
+        }
+        else if (State == RoomState.ChartSelect)
+        {
+            _votes.Remove(conn.PlayerId);
+            if (_votes.Count >= _players.Count && _players.Count > 0)
+                FinalizeVote();
+        }
+        else if (State == RoomState.Downloading)
+        {
+            _downloadProgress.Remove(conn.PlayerId);
+            _readyForPlay.Remove(conn.PlayerId);
+            CheckAllDownloaded();
+            if (_readyPhaseCts != null && !_readyPhaseCts.IsCancellationRequested
+                && _players.Values.All(p => _readyForPlay.Contains(p.PlayerId)))
+                _readyPhaseCts.Cancel();
+        }
+
+        BroadcastSnapshot();
+        OnStateChanged?.Invoke();
     }
 
     public void HandleJoin(NodeConnection conn, string? password)
@@ -386,6 +391,7 @@ public class NodeRoom : IDisposable
     {
         lock (_stateLock)
         {
+            _readyPhaseCts?.Dispose();
             _readyPhaseCts = new CancellationTokenSource();
             BroadcastSnapshot();
 
@@ -403,6 +409,7 @@ public class NodeRoom : IDisposable
                 if (_disposed || _players.IsEmpty) return;
                 StartGame();
             }
+            _playingTimeoutCts?.Dispose();
             _playingTimeoutCts = new CancellationTokenSource();
             _ = ComboHeartbeatCheck(_playingTimeoutCts.Token);
             return;
@@ -431,6 +438,7 @@ public class NodeRoom : IDisposable
 
         if (_disposed || _players.IsEmpty) return;
 
+        _playingTimeoutCts?.Dispose();
         _playingTimeoutCts = new CancellationTokenSource();
         _ = ComboHeartbeatCheck(_playingTimeoutCts.Token);
     }
@@ -602,7 +610,7 @@ public class NodeRoom : IDisposable
 
         target.SendMessage(MessageType.Kick, msg);
         target.CloseAfterSend();
-        RemovePlayer(target);
+        RemovePlayerInternal(target);
     }
 
     CancellationTokenSource? _voteTimeoutCts;
@@ -633,6 +641,7 @@ public class NodeRoom : IDisposable
             _votes.Clear();
             _downloadProgress.Clear();
             _readyState.Clear();
+            _voteTimeoutCts?.Dispose();
             _voteTimeoutCts = new CancellationTokenSource();
             _ = VoteCountdown(_voteTimeoutCts.Token);
         }

@@ -191,7 +191,8 @@ public class NodeConnection
                     return;
                 }
                 var maxPlayers = Math.Clamp(create.MaxPlayers, 2, 32);
-                var room = _node.CreateRoom(AuthorizedRoomId.Value, create.RoomName, maxPlayers, create.IsPrivate, create.Password, this);
+                var roomName = string.IsNullOrEmpty(create.RoomName) ? "未命名房间" : create.RoomName.Length > 50 ? create.RoomName[..50] : create.RoomName;
+                var room = _node.CreateRoom(AuthorizedRoomId.Value, roomName, maxPlayers, create.IsPrivate, create.Password, this);
                 if (room == null)
                 {
                     SendError(409, "房间ID已存在");
