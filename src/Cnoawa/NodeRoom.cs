@@ -14,6 +14,7 @@ public class NodeRoom : IDisposable
     readonly HashSet<byte> _finishedPlayers = new();
     readonly Dictionary<byte, long> _lastComboTime = new();
     readonly Dictionary<byte, int> _lastReportedScore = new();
+    readonly Dictionary<byte, int> _lastReportedMaxCombo = new();
     readonly Dictionary<byte, int> _skillCooldown = new();
     readonly string _apiUrl;
     readonly string _nodeToken;
@@ -440,6 +441,7 @@ public class NodeRoom : IDisposable
         _finishedPlayers.Clear();
         _lastComboTime.Clear();
         _lastReportedScore.Clear();
+        _lastReportedMaxCombo.Clear();
         _skillCooldown.Clear();
         var now = Environment.TickCount64;
         foreach (var conn in _players.Values)
@@ -504,6 +506,7 @@ public class NodeRoom : IDisposable
         if (_lastReportedScore.TryGetValue(sender.PlayerId, out var lastScore) && msg.Score < lastScore)
             return;
         _lastReportedScore[sender.PlayerId] = msg.Score;
+        _lastReportedMaxCombo[sender.PlayerId] = msg.MaxCombo;
 
         _lastComboTime[sender.PlayerId] = Environment.TickCount64;
 
@@ -542,7 +545,8 @@ public class NodeRoom : IDisposable
             {
                 PlayerId = p.PlayerId,
                 UserId = p.UserId,
-                Score = _lastReportedScore.TryGetValue(p.PlayerId, out var s) ? s : 0
+                Score = _lastReportedScore.TryGetValue(p.PlayerId, out var s) ? s : 0,
+                MaxCombo = _lastReportedMaxCombo.TryGetValue(p.PlayerId, out var mc) ? mc : 0
             })
             .OrderByDescending(r => r.Score)
             .ToArray();
@@ -623,6 +627,7 @@ public class NodeRoom : IDisposable
             _downloadProgress.Clear();
             _finishedPlayers.Clear();
             _lastReportedScore.Clear();
+            _lastReportedMaxCombo.Clear();
             _skillCooldown.Clear();
             _readyState.Clear();
             _readyForPlay.Clear();
