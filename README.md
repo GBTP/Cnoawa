@@ -36,8 +36,8 @@ cd Cnoawa
 
 # 直接运行
 dotnet run --project src/Cnoawa/Cnoawa.csproj -- \
-  7776 \
-  https://api.anoawa.com \
+  你开放的tcp端口 \
+  问inokana要api地址 \
   你的公网地址 \
   "节点名称" \
   "欢迎来玩" \
@@ -50,7 +50,7 @@ dotnet run --project src/Cnoawa/Cnoawa.csproj -- \
 
 ```bash
 chmod +x run.sh
-./run.sh 7776 https://api.anoawa.com 你的公网地址 "节点名称" "欢迎来玩" "你的注册密钥"
+./run.sh 你开放的tcp端口 问inokana要api地址 你的公网地址 "节点名称" "欢迎来玩" "你的注册密钥"
 ```
 
 脚本会自动 `git pull` → 构建 → 运行，进程退出后自动拉取最新代码并重启。管理员可通过后台远程触发节点更新。
