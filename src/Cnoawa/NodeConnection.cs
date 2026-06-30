@@ -58,6 +58,7 @@ public class NodeConnection
                 if (type == (MessageType)0xAA && payload.Length >= 2 && payload[0] == 0x55 && payload[1] == 0x01)
                 {
                     Send(FrameCodec.Encode((MessageType)0xAA, new byte[] { 0x55, 0x02 }));
+                    CloseAfterSend();
                     break;
                 }
 
@@ -72,7 +73,8 @@ public class NodeConnection
         }
         finally
         {
-            Close();
+            if (!_gracefulClose)
+                Close();
             _node.RemoveConnection(_connId);
             await writeTask;
             await pingTask;
