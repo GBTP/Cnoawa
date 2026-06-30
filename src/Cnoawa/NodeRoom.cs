@@ -15,6 +15,7 @@ public class NodeRoom : IDisposable
     readonly Dictionary<byte, long> _lastComboTime = new();
     readonly Dictionary<byte, int> _lastReportedScore = new();
     readonly Dictionary<byte, int> _lastReportedMaxCombo = new();
+    readonly Dictionary<byte, PlayerFinishedMessage> _finishedData = new();
     readonly Dictionary<byte, long> _skillCooldown = new();
     readonly string _apiUrl;
     readonly string _nodeToken;
@@ -508,7 +509,7 @@ public class NodeRoom : IDisposable
         var msg = MemoryPackSerializer.Deserialize<ComboUpdateMessage>(payload);
         if (msg == null) return;
 
-        if (msg.Score < 0 || msg.Score > 10100000 || msg.Combo < 0 || msg.MaxCombo < 0)
+        if (msg.Score < 0 || msg.Combo < 0 || msg.MaxCombo < 0)
             return;
 
         if (_lastReportedScore.TryGetValue(sender.PlayerId, out var lastScore) && msg.Score < lastScore)
@@ -536,6 +537,7 @@ public class NodeRoom : IDisposable
         if (msg == null) return;
 
         msg.PlayerId = sender.PlayerId;
+        _finishedData[sender.PlayerId] = msg;
         BroadcastExcept(sender.ConnId, MessageType.PlayerFinished, msg);
         CheckAllFinished();
     }
@@ -549,12 +551,20 @@ public class NodeRoom : IDisposable
         _lastComboTime.Clear();
 
         var rankings = _players.Values
-            .Select(p => new PlayerResult
+            .Select(p =>
             {
-                PlayerId = p.PlayerId,
-                UserId = p.UserId,
-                Score = _lastReportedScore.TryGetValue(p.PlayerId, out var s) ? s : 0,
-                MaxCombo = _lastReportedMaxCombo.TryGetValue(p.PlayerId, out var mc) ? mc : 0
+                _finishedData.TryGetValue(p.PlayerId, out var f);
+                return new PlayerResult
+                {
+                    PlayerId = p.PlayerId,
+                    UserId = p.UserId,
+                    Score = f?.FinalScore ?? (_lastReportedScore.TryGetValue(p.PlayerId, out var s) ? s : 0),
+                    MaxCombo = f?.MaxCombo ?? (_lastReportedMaxCombo.TryGetValue(p.PlayerId, out var mc) ? mc : 0),
+                    MaxPure = f?.MaxPure ?? 0,
+                    Pure = f?.Pure ?? 0,
+                    Far = f?.Far ?? 0,
+                    Lost = f?.Lost ?? 0
+                };
             })
             .OrderByDescending(r => r.Score)
             .ToArray();
@@ -628,6 +638,7 @@ public class NodeRoom : IDisposable
             _votes.Clear();
             _downloadProgress.Clear();
             _finishedPlayers.Clear();
+            _finishedData.Clear();
             _lastReportedScore.Clear();
             _lastReportedMaxCombo.Clear();
             _skillCooldown.Clear();

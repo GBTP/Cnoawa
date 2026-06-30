@@ -12,7 +12,6 @@ public class NodeConnection
     readonly NetworkStream _stream;
     readonly GameNode _node;
     readonly Channel<byte[]> _sendQueue = Channel.CreateBounded<byte[]>(512);
-    volatile bool _sendQueueFull;
     readonly CancellationTokenSource _cts = new();
 
     DateTime _lastRecv = DateTime.UtcNow;
@@ -246,15 +245,8 @@ public class NodeConnection
     {
         if (!_sendQueue.Writer.TryWrite(frame))
         {
-            if (!_sendQueueFull)
-            {
-                _sendQueueFull = true;
-                Console.WriteLine($"[Cnoawa] #{_connId} 发送队列满，开始丢包");
-            }
-        }
-        else
-        {
-            _sendQueueFull = false;
+            Console.WriteLine($"[Cnoawa] #{_connId} 发送队列满，断开连接");
+            Close();
         }
     }
 
