@@ -16,7 +16,6 @@ public class NodeRoom : IDisposable
     readonly Dictionary<byte, int> _lastReportedScore = new();
     readonly Dictionary<byte, int> _lastReportedMaxCombo = new();
     readonly Dictionary<byte, PlayerFinishedMessage> _finishedData = new();
-    readonly Dictionary<byte, long> _skillCooldown = new();
     // 干扰动画的占位时长。动画资源接入后由客户端按自身长度播放，这里只是消息里的上限值。
     const float DistractDuration = 5f;
     readonly string _apiUrl;
@@ -446,7 +445,6 @@ public class NodeRoom : IDisposable
         _lastComboTime.Clear();
         _lastReportedScore.Clear();
         _lastReportedMaxCombo.Clear();
-        _skillCooldown.Clear();
         var now = Environment.TickCount64;
         foreach (var conn in _players.Values)
             _lastComboTime[conn.PlayerId] = now;
@@ -579,16 +577,14 @@ public class NodeRoom : IDisposable
         var msg = MemoryPackSerializer.Deserialize<SkillCastMessage>(payload);
         if (msg == null) return;
 
-        var now = Environment.TickCount64;
-        if (_skillCooldown.TryGetValue(sender.PlayerId, out var lastCast) && now - lastCast < 5000)
-        {
-            sender.SendError(0, "技能冷却中");
-            return;
-        }
-        _skillCooldown[sender.PlayerId] = now;
-
         // 现在只剩「干扰别人」这一种网络技能，目标固定是所有其他玩家。
-        // SelfBoost（增强自己）是纯客户端本地生效，不会走到这里。
+        // SelfBoost（增强自己）纯客户端本地生效，正常客户端不会发到这里；
+        // 只认白名单里的 ID，改过的客户端塞别的值进来也广播不出去。
+        if (msg.SkillId != (byte)SkillId.DistractOthers) return;
+
+        // 不做冷却限制：技能消耗血条，血条本身就是限流（干扰一次 25 点，回满要上百个 note）。
+        // 之前那道 5 秒冷却只会回一条 Error，而客户端把任何 Error 都当断线处理，连点就被踢出对局。
+
         var effect = new SkillEffectMessage
         {
             CasterPlayerId = sender.PlayerId,
@@ -632,7 +628,6 @@ public class NodeRoom : IDisposable
             _finishedData.Clear();
             _lastReportedScore.Clear();
             _lastReportedMaxCombo.Clear();
-            _skillCooldown.Clear();
             _readyState.Clear();
             _readyForPlay.Clear();
             SelectedLevelId = null;
