@@ -199,6 +199,10 @@ public class GameNode
                 ValidateAudience = true,
                 ValidAudience = _jwtAudience,
                 ValidateLifetime = true,
+                // 默认 ClockSkew 是 5 分钟，会把主 API 精心设计的 60 秒连接 token 变成 6 分钟，
+                // 恶意节点有充足时间把玩家交上来的 token 中继到别的节点冒名。
+                // 主 API 和节点都用 UTC、都在公网上，10 秒足够容忍时钟漂移。
+                ClockSkew = TimeSpan.FromSeconds(10),
                 IssuerSigningKey = _jwtPublicKey,
                 ValidateIssuerSigningKey = true
             };
