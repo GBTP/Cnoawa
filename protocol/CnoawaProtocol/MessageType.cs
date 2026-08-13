@@ -73,13 +73,11 @@ namespace CnoawaProtocol
     public enum SkillId : byte
     {
         None = 0,
-        NoteScramble = 1,
-        ScreenFlash = 2,
-        SpeedChange = 3,
-        PerfectWindow = 11,
-        ScoreBoost = 12,
-        ShieldMiss = 13,
-        ComboBreak = 21,
-        ScoreSteal = 22
+
+        /// <summary>增强自己：命中即 Pure + arc 不锁手。纯客户端本地生效，不发网络消息。</summary>
+        SelfBoost = 1,
+
+        /// <summary>干扰别人：其他所有玩家弹搞笑动画。走节点广播。</summary>
+        DistractOthers = 2
     }
 }

@@ -17,6 +17,8 @@ public class NodeRoom : IDisposable
     readonly Dictionary<byte, int> _lastReportedMaxCombo = new();
     readonly Dictionary<byte, PlayerFinishedMessage> _finishedData = new();
     readonly Dictionary<byte, long> _skillCooldown = new();
+    // 干扰动画的占位时长。动画资源接入后由客户端按自身长度播放，这里只是消息里的上限值。
+    const float DistractDuration = 5f;
     readonly string _apiUrl;
     readonly string _nodeToken;
     static readonly HttpClient s_http = new() { Timeout = TimeSpan.FromSeconds(10) };
@@ -585,21 +587,17 @@ public class NodeRoom : IDisposable
         }
         _skillCooldown[sender.PlayerId] = now;
 
+        // 现在只剩「干扰别人」这一种网络技能，目标固定是所有其他玩家。
+        // SelfBoost（增强自己）是纯客户端本地生效，不会走到这里。
         var effect = new SkillEffectMessage
         {
             CasterPlayerId = sender.PlayerId,
-            TargetPlayerId = msg.TargetPlayerId,
             SkillId = msg.SkillId,
-            Duration = 5f
+            // 占位时长：动画资源接入后由客户端按自身长度播放，这个值只是上限。
+            Duration = DistractDuration
         };
 
-        if (msg.TargetPlayerId == 0xFF)
-            BroadcastExcept(sender.ConnId, MessageType.SkillEffect, effect);
-        else
-        {
-            var target = _players.Values.FirstOrDefault(p => p.PlayerId == msg.TargetPlayerId);
-            target?.SendMessage(MessageType.SkillEffect, effect);
-        }
+        BroadcastExcept(sender.ConnId, MessageType.SkillEffect, effect);
     }
 
     void HandleKick(NodeConnection sender, byte[] payload)

@@ -8,7 +8,7 @@ namespace CnoawaProtocol
     public partial class AuthMessage
     {
         public string Token { get; set; } = "";
-        public byte ProtocolVersion { get; set; } = 1;
+        public byte ProtocolVersion { get; set; } = 2;
     }
 
     [MemoryPackable]
@@ -212,14 +212,12 @@ namespace CnoawaProtocol
     public partial class SkillCastMessage
     {
         public byte SkillId { get; set; }
-        public byte TargetPlayerId { get; set; }
     }
 
     [MemoryPackable]
     public partial class SkillEffectMessage
     {
         public byte CasterPlayerId { get; set; }
-        public byte TargetPlayerId { get; set; }
         public byte SkillId { get; set; }
         public float Duration { get; set; }
     }

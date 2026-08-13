@@ -145,7 +145,7 @@ public class NodeConnection
             return;
         }
 
-        const byte CurrentProtocolVersion = 1;
+        const byte CurrentProtocolVersion = 2;
         if (msg.ProtocolVersion != CurrentProtocolVersion)
         {
             SendMessage(MessageType.AuthResult, new AuthResultMessage
