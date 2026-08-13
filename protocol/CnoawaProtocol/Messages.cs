@@ -28,8 +28,9 @@ namespace CnoawaProtocol
         public int RoomId { get; set; }
         public string RoomName { get; set; } = "";
         public int MaxPlayers { get; set; } = 8;
+        // 私密房的隔离手段是"不进公开列表、凭房间号直进"，没有密码功能。
+        // 删除 Password 字段会改变 MemoryPack 布局，节点与客户端必须一起升级。
         public bool IsPrivate { get; set; }
-        public string? Password { get; set; }
     }
 
     [MemoryPackable]
@@ -43,7 +44,6 @@ namespace CnoawaProtocol
     public partial class JoinRoomMessage
     {
         public int RoomId { get; set; }
-        public string? Password { get; set; }
     }
 
     [MemoryPackable]

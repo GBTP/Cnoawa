@@ -193,7 +193,7 @@ public class NodeConnection
                 }
                 var maxPlayers = Math.Clamp(create.MaxPlayers, 2, 32);
                 var roomName = string.IsNullOrEmpty(create.RoomName) ? "未命名房间" : create.RoomName.Length > 50 ? create.RoomName[..50] : create.RoomName;
-                var room = _node.CreateRoom(AuthorizedRoomId.Value, roomName, maxPlayers, create.IsPrivate, create.Password, this);
+                var room = _node.CreateRoom(AuthorizedRoomId.Value, roomName, maxPlayers, create.IsPrivate, this);
                 if (room == null)
                 {
                     SendError(409, "房间ID已存在");
@@ -212,7 +212,7 @@ public class NodeConnection
                     SendMessage(MessageType.JoinRoomResult, new JoinRoomResultMessage { Success = false, Reason = "房间不存在" });
                     return;
                 }
-                target.HandleJoin(this, join.Password);
+                target.HandleJoin(this);
                 break;
 
             default:

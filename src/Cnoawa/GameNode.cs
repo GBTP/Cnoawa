@@ -132,9 +132,9 @@ public class GameNode
         return room;
     }
 
-    public NodeRoom? CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator)
+    public NodeRoom? CreateRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, NodeConnection creator)
     {
-        var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, password, creator, ApiUrl, NodeToken);
+        var room = new NodeRoom(roomId, roomName, maxPlayers, isPrivate, creator, ApiUrl, NodeToken);
         room.OnStateChanged = NotifyRoomStateChanged;
         room.OnRoomEmpty = RemoveRoom;
         if (!_rooms.TryAdd(roomId, room))
@@ -237,6 +237,7 @@ public class RoomInfo
     public int CurrentPlayers { get; set; }
     public int MaxPlayers { get; set; }
     public string Status { get; set; } = "Lobby";
+    public bool IsPrivate { get; set; }
     public int? SelectedLevelId { get; set; }
     public string? SelectedLevelName { get; set; }
 }

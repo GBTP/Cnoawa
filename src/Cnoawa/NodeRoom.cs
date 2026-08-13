@@ -27,8 +27,8 @@ public class NodeRoom : IDisposable
     public int RoomId { get; }
     public string RoomName { get; }
     public int MaxPlayers { get; }
+    // 私密房的隔离是"不进公开列表、凭房间号直进"，没有密码功能，所以这里没有 Password。
     public bool IsPrivate { get; }
-    public string? Password { get; }
     public NodeConnection? Creator { get; private set; }
     public RoomState State { get; private set; } = RoomState.Lobby;
     public RoomType RoomType { get; private set; } = RoomType.Competitive;
@@ -39,13 +39,12 @@ public class NodeRoom : IDisposable
     public Action? OnStateChanged { get; set; }
     public Action<int>? OnRoomEmpty { get; set; }
 
-    public NodeRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, string? password, NodeConnection creator, string apiUrl, string nodeToken)
+    public NodeRoom(int roomId, string roomName, int maxPlayers, bool isPrivate, NodeConnection creator, string apiUrl, string nodeToken)
     {
         RoomId = roomId;
         RoomName = roomName;
         MaxPlayers = maxPlayers;
         IsPrivate = isPrivate;
-        Password = password;
         Creator = creator;
         _apiUrl = apiUrl;
         _nodeToken = nodeToken;
@@ -115,7 +114,7 @@ public class NodeRoom : IDisposable
         OnStateChanged?.Invoke();
     }
 
-    public void HandleJoin(NodeConnection conn, string? password)
+    public void HandleJoin(NodeConnection conn)
     {
         lock (_stateLock)
         {
@@ -134,12 +133,6 @@ public class NodeRoom : IDisposable
             if (_players.Count >= MaxPlayers)
             {
                 conn.SendMessage(MessageType.JoinRoomResult, new JoinRoomResultMessage { Success = false, Reason = "房间已满" });
-                return;
-            }
-
-            if (!string.IsNullOrEmpty(Password) && password != Password)
-            {
-                conn.SendMessage(MessageType.JoinRoomResult, new JoinRoomResultMessage { Success = false, Reason = "密码错误" });
                 return;
             }
 
@@ -768,6 +761,7 @@ public class NodeRoom : IDisposable
         CurrentPlayers = _players.Count,
         MaxPlayers = MaxPlayers,
         Status = State.ToString(),
+        IsPrivate = IsPrivate,
         SelectedLevelId = SelectedLevelId,
         SelectedLevelName = SelectedLevelName
     };
