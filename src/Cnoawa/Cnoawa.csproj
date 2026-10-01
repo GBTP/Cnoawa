@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\protocol\CnoawaProtocol\*.cs" LinkBase="Protocol" />
+    <Compile Include="..\..\protocol\CnoawaHostLogic\*.cs" LinkBase="HostLogic" />
   </ItemGroup>
 
 </Project>

@@ -10,7 +10,7 @@ namespace Cnoawa;
 
 public class GameNode
 {
-    const int MaxPlayersPerRoom = 32;
+    const int MaxPlayersPerRoom = 16;
 
     readonly ushort _port;
     readonly ConcurrentDictionary<int, NodeConnection> _connections = new();
@@ -159,7 +159,22 @@ public class GameNode
 
     public List<RoomInfo> GetRoomInfos()
     {
-        return _rooms.Values.Select(r => r.GetInfo()).ToList();
+        return _rooms.Values.Select(r =>
+        {
+            var info = r.GetInfo();
+            return new RoomInfo
+            {
+                RoomId = info.RoomId,
+                RoomName = info.RoomName,
+                HostUserId = info.HostUserId,
+                CurrentPlayers = info.CurrentPlayers,
+                MaxPlayers = info.MaxPlayers,
+                Status = info.Status,
+                IsPrivate = info.IsPrivate,
+                SelectedLevelId = info.SelectedLevelId,
+                SelectedLevelName = info.SelectedLevelName
+            };
+        }).ToList();
     }
 
     void NotifyRoomStateChanged()

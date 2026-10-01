@@ -1,11 +1,12 @@
 using System.Net.Sockets;
 using System.Threading.Channels;
+using Cnoawa.Host;
 using CnoawaProtocol;
 using MemoryPack;
 
 namespace Cnoawa;
 
-public class NodeConnection
+public class NodeConnection : IHostPlayer
 {
     readonly int _connId;
     readonly TcpClient _tcp;
@@ -24,6 +25,10 @@ public class NodeConnection
     public int? AuthorizedRoomId { get; private set; }
     public byte PlayerId { get; set; }
     public volatile NodeRoom? CurrentRoom;
+
+    // === IHostPlayer ===
+    int IHostPlayer.TransportId => _connId;
+    void IHostPlayer.Kick() => CloseAfterSend();
 
     public NodeConnection(int connId, TcpClient tcp, GameNode node)
     {
@@ -191,7 +196,7 @@ public class NodeConnection
                     SendError(403, "连接令牌中未包含房间ID");
                     return;
                 }
-                var maxPlayers = Math.Clamp(create.MaxPlayers, 2, 32);
+                var maxPlayers = Math.Clamp(create.MaxPlayers, 2, 16);
                 var roomName = string.IsNullOrEmpty(create.RoomName) ? "未命名房间" : create.RoomName.Length > 50 ? create.RoomName[..50] : create.RoomName;
                 var room = _node.CreateRoom(AuthorizedRoomId.Value, roomName, maxPlayers, create.IsPrivate, this);
                 if (room == null)
@@ -228,14 +233,14 @@ public class NodeConnection
         Send(frame);
     }
 
-    public void SendRaw(MessageType type, byte[] payload)
+    public void SendRaw(byte messageType, byte[] payload)
     {
-        Send(FrameCodec.Encode(type, payload));
+        Send(FrameCodec.Encode((MessageType)messageType, payload));
     }
 
-    public void SendEmpty(MessageType type)
+    public void SendEmpty(byte messageType)
     {
-        Send(FrameCodec.EncodeEmpty(type));
+        Send(FrameCodec.EncodeEmpty((MessageType)messageType));
     }
 
     public void SendError(int code, string message)
