@@ -1,3 +1,4 @@
+using System.Linq;
 using Cnoawa.Host;
 using CnoawaProtocol;
 
@@ -47,19 +48,41 @@ public class NodeRoom : IDisposable
         _host.OnRoomEmpty = id => OnRoomEmpty?.Invoke(id);
     }
 
-    public void AddPlayer(NodeConnection conn) => _host.AddPlayer(conn);
+    public void AddPlayer(NodeConnection conn)
+    {
+        _host.AddPlayer(conn);
+        // 这一行是 NodeConnection 路由房间消息的唯一依据。统一核心重构把它从
+        // NodeRoom.AddPlayerInternal 搬丢后，所有建房/加入的玩家都会停在 Lobby 路由，
+        // 后续消息被当成「未加入房间」，断线时也不会从房间成员里移除。
+        conn.CurrentRoom = this;
+    }
 
-    public void RemovePlayer(NodeConnection conn) => _host.RemovePlayer(conn);
+    public void RemovePlayer(NodeConnection conn)
+    {
+        _host.RemovePlayer(conn);
+        // 踢人/主动离开/连接断开都会走到这里；只有真的不在成员表里才清引用，
+        // 避免 HostLogic 因状态机拒绝移除时把仍在房间里的连接误标成不在房间。
+        if (!_host.Players.Contains(conn))
+            conn.CurrentRoom = null;
+    }
 
     public void HandleMessage(NodeConnection sender, MessageType type, byte[] payload)
         => _host.HandleMessage(sender, type, payload);
 
-    public void HandleJoin(NodeConnection conn) => _host.HandleJoin(conn);
+    public void HandleJoin(NodeConnection conn)
+    {
+        _host.HandleJoin(conn);
+        // HandleJoin 可能因房间已满/已在游戏中拒绝；只有真进了成员表才算加入成功。
+        if (_host.Players.Contains(conn))
+            conn.CurrentRoom = this;
+    }
 
     public void HandleLeaveRoom(NodeConnection sender)
     {
         // 原 NodeRoom.HandleLeaveRoom: RemovePlayer + sender.SendEmpty(LeaveRoom)
         _host.HandleLeaveRoom(sender);
+        if (!_host.Players.Contains(sender))
+            sender.CurrentRoom = null;
     }
 
     public HostRoomInfo GetInfo() => _host.GetInfo();
